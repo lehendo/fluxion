@@ -201,37 +201,19 @@ def _write_fasta(sequence: str, name: str, path: Path) -> None:
 
 
 def _build_feature_context(fasta_path: Path, msa_dir: Optional[Path] = None) -> "AllAtomFeatureContext":
-    """Build AllAtomFeatureContext from a FASTA file using chai-lab 0.6.1 internals.
-
-    MSA is skipped when msa_dir is None (speeds up per-frame extraction by >10×).
-
-    If this function raises, find the correct builder by inspecting chai_lab/chai1.py:
-        grep -n 'def.*context\\|AllAtomFeatureContext' <chai_lab_src>/chai1.py
-    then update the import and call below.
-    """
-    # Attempt 1 — private builder used inside run_folding_on_context
-    try:
-        from chai_lab.chai1 import _get_feature_context  # type: ignore
-        return _get_feature_context(
-            fasta_file=fasta_path,
-            constraint_path=None,
-            msa_directory=msa_dir,
-            generate_msa_signals=(msa_dir is not None),
-        )
-    except (ImportError, AttributeError, TypeError):
-        pass
-
-    # Attempt 2 — dataset-level loader
-    try:
-        from chai_lab.data.dataset.inference_dataset import load_feature_context  # type: ignore
-        return load_feature_context(fasta_path=fasta_path, msa_dir=msa_dir)
-    except (ImportError, AttributeError, TypeError):
-        pass
-
-    raise RuntimeError(
-        "Cannot build AllAtomFeatureContext from FASTA.\n"
-        "Inspect chai_lab/chai1.py for the internal context builder and update "
-        "_build_feature_context() with the correct function name and signature."
+    """Build AllAtomFeatureContext from a FASTA file using chai-lab 0.6.1 internals."""
+    from chai_lab.chai1 import make_all_atom_feature_context  # type: ignore
+    
+    # We pass a dummy output_dir since we don't save embeddings here
+    dummy_out = fasta_path.parent / "dummy_embeddings"
+    dummy_out.mkdir(exist_ok=True)
+    
+    return make_all_atom_feature_context(
+        fasta_file=fasta_path,
+        output_dir=dummy_out,
+        use_esm_embeddings=True,
+        msa_directory=msa_dir,
+        esm_device=torch.device("cpu"), # Keep ESM on CPU to save VRAM
     )
 
 
