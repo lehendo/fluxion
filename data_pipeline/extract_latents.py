@@ -194,16 +194,14 @@ class TrunkOnlyWrapper(nn.Module):
 def load_chai1_trunk(device: torch.device) -> Tuple[TrunkOnlyWrapper, object]:
     """Load Chai-1 weights and return (TrunkOnlyWrapper, featurizer)."""
     
-    log.info("Attempting to initialize Chai-1 from Hugging Face...")
+    log.info("Attempting to initialize Chai-1...")
     
-    # Force the direct import for the newest version of chai-lab
-    from chai_lab.model.runners.inference import ChaiInference
+    # Use the verified import path for your version of chai-lab
+    from chai_lab.chai1 import load_model
     
-    # This is where it will crash if the compute node is air-gapped
-    runner = ChaiInference.from_pretrained()
-    
-    raw_model = runner.model
-    featurizer = runner
+    # Load the model directly
+    raw_model = load_model(device=device)
+    featurizer = raw_model
 
     raw_model.eval().to(device)
     for p in raw_model.parameters():
