@@ -144,11 +144,11 @@ except ImportError:
     )
 
 try:
-    from chai_lab.data.dataset.restraints.restraints import TokenBondRestraint  # type: ignore
+    from chai_lab.data.features.generators.token_bond import TokenBondRestraint  # type: ignore
 except ImportError:
     raise ImportError(
         "Cannot import TokenBondRestraint.  "
-        "Search: grep -r 'class TokenBondRestraint' <chai_lab_src>/"
+        "Check chai_lab/data/features/generators/token_bond.py"
     )
 
 # move_data_to_device: moves nested dicts/lists of tensors to a device.
