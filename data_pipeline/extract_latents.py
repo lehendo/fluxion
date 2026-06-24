@@ -225,11 +225,7 @@ def load_chai1_trunk(device: torch.device) -> Tuple[TrunkOnlyWrapper, object]:
             pass
 
     if raw_model is None:
-        raise ImportError(
-            "Failed to import Chai-1.  Activate the fluxion conda env and verify:\n"
-            "  pip install chai-lab\n"
-            "  echo $HF_HOME  # should point to /scratch/arjunc4/fluxion_data/hf_cache"
-        )
+        raise e
 
     raw_model.eval().to(device)
     for p in raw_model.parameters():
