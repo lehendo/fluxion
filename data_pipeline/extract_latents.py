@@ -192,40 +192,18 @@ class TrunkOnlyWrapper(nn.Module):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def load_chai1_trunk(device: torch.device) -> Tuple[TrunkOnlyWrapper, object]:
-    """Load Chai-1 weights and return (TrunkOnlyWrapper, featurizer).
-
-    Tries two chai-lab API patterns in order.  A clear ImportError is raised
-    if neither succeeds, pointing to the install step.
-
-    Returns
-    -------
-    trunk_wrapper : TrunkOnlyWrapper — trunk-only forward pass (frozen, eval)
-    featurizer    : chai-lab featurizer object — used in frame_to_batch()
-    """
-    raw_model = featurizer = None
-
-    # ── Pattern 1: chai-lab >= 0.5.x ────────────────────────────────────────
-    try:
-        from chai_lab.model.runners.inference import ChaiInference  # type: ignore
-        runner    = ChaiInference.from_pretrained()
-        raw_model  = runner.model
-        featurizer = runner
-        log.info("Chai-1 loaded via ChaiInference.from_pretrained()")
-    except (ImportError, AttributeError):
-        pass
-
-    # ── Pattern 2: chai-lab < 0.5 / dev builds ──────────────────────────────
-    if raw_model is None:
-        try:
-            from chai_lab.chai1 import load_model  # type: ignore
-            raw_model  = load_model(device=device)
-            featurizer = raw_model   # featurizer methods live on model in older versions
-            log.info("Chai-1 loaded via chai_lab.chai1.load_model()")
-        except (ImportError, AttributeError):
-            pass
-
-    if raw_model is None:
-        raise e
+    """Load Chai-1 weights and return (TrunkOnlyWrapper, featurizer)."""
+    
+    log.info("Attempting to initialize Chai-1 from Hugging Face...")
+    
+    # Force the direct import for the newest version of chai-lab
+    from chai_lab.model.runners.inference import ChaiInference
+    
+    # This is where it will crash if the compute node is air-gapped
+    runner = ChaiInference.from_pretrained()
+    
+    raw_model = runner.model
+    featurizer = runner
 
     raw_model.eval().to(device)
     for p in raw_model.parameters():
@@ -233,6 +211,7 @@ def load_chai1_trunk(device: torch.device) -> Tuple[TrunkOnlyWrapper, object]:
 
     wrapper = TrunkOnlyWrapper(_locate_trunk(raw_model)).to(device).eval()
     log.info("TrunkOnlyWrapper ready on %s", device)
+    
     return wrapper, featurizer
 
 
