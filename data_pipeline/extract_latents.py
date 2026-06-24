@@ -197,7 +197,7 @@ def _get_sequence(u: mda.Universe) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _write_fasta(sequence: str, name: str, path: Path) -> None:
-    path.write_text(f">{name}\n{sequence}\n")
+    path.write_text(f">protein|{name}\n{sequence}\n")
 
 
 def _build_feature_context(fasta_path: Path, msa_dir: Optional[Path] = None) -> "AllAtomFeatureContext":
