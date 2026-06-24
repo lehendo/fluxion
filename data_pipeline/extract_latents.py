@@ -127,12 +127,12 @@ except ImportError:
     )
 
 try:
-    from chai_lab.data.collation.collator import Collate          # type: ignore
-    from chai_lab.data.features.feature_factory import feature_factory  # type: ignore
+    from chai_lab.data.collate.collate import Collate                  # type: ignore
+    from chai_lab.chai1 import feature_factory                         # type: ignore
 except ImportError:
     raise ImportError(
-        "Cannot import Collate or feature_factory.  "
-        "Check chai_lab/data/collation/ and chai_lab/data/features/ for the correct paths."
+        "Cannot import Collate or feature_factory. "
+        "Check chai_lab/data/collate/ and chai_lab/chai1.py."
     )
 
 try:
