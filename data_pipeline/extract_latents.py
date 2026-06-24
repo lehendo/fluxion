@@ -639,8 +639,7 @@ def extract(args: argparse.Namespace) -> None:
     n_total = len(u.trajectory)
     log.info("Trajectory: %d frames", n_total)
 
-    # Select backbone atoms once; reuse AtomGroup across all frames
-    backbone = u.select_atoms("protein and backbone")
+    all_atoms = u.select_atoms("protein")
 
     # ── Resume: skip frames already written ──────────────────────────────────
     n_done      = frames_already_done(out_dir, protein)
@@ -685,7 +684,7 @@ def extract(args: argparse.Namespace) -> None:
     # ── Pre-flight: validate pipeline on frame 0 ─────────────────────────────
     log.info("Pre-flight: validating trunk pipeline on frame 0 …")
     u.trajectory[0]
-    test_ctx = _patch_atom_coords(base_context, backbone.positions.copy())
+    test_ctx = _patch_atom_coords(base_context, all_atoms.positions.copy())
     s0, p0 = run_trunk_pipeline(
         test_ctx, loaded_modules, device,
         num_trunk_recycles=args.num_trunk_recycles,
@@ -717,7 +716,7 @@ def extract(args: argparse.Namespace) -> None:
 
     for ts in pbar:
         # CRITICAL: .copy() before next ts.next() overwrites the MDAnalysis buffer
-        positions = backbone.positions.copy()   # [N_bb, 3] Å
+        positions = all_atoms.positions.copy()   # [N_atoms, 3] Å
 
         # Shallow-copy context with this frame's coordinates injected
         frame_context = _patch_atom_coords(base_context, positions)
