@@ -9,73 +9,13 @@ filelock.
 
 Usage
 ─────
-python data_pipeline/extract_latents.py \\
-    --pdb     /scratch/arjunc4/fluxion_data/raw/1ABC/protein.pdb \\
-    --dcd     /scratch/arjunc4/fluxion_data/raw/1ABC/traj.dcd \\
-    --out-dir /scratch/arjunc4/fluxion_data/latents \\
-    --shard-size 1000 \\
-    --num-trunk-recycles 3 \\
+python data_pipeline/extract_latents.py \
+    --pdb     /scratch/arjunc4/fluxion_data/raw/1ABC/protein.pdb \
+    --dcd     /scratch/arjunc4/fluxion_data/raw/1ABC/traj.dcd \
+    --out-dir /scratch/arjunc4/fluxion_data/latents \
+    --shard-size 1000 \
+    --num-trunk-recycles 3 \
     --device cuda
-
-Alternatively, to encode from a FASTA (no trajectory):
-    python data_pipeline/extract_latents.py --fasta protein.fasta --out-dir ...
-
-For large proteins (L > 400) the pair buffer can exceed 10 GB RAM per shard.
-Use --shard-size 100 or --skip-pair in those cases.
-
-Output layout
-─────────────
-<out-dir>/
-  manifest.json                 shared protein→shard index (filelock-guarded)
-  <protein_stem>/
-    shard_000000.h5             float16  single [N,L,d_s]  +  pair [N,L,L,d_p]
-    shard_000001.h5
-    ...
-
-═══════════════════════════════════════════════════════════════════════════════
-Chai-lab 0.6.1 pipeline
-═══════════════════════════════════════════════════════════════════════════════
-
-In 0.6.1 the monolithic load_model() was replaced with isolated, pre-compiled
-TorchScript modules loaded via load_exported().  The orchestration code below
-faithfully replicates the sequence from run_folding_on_context() (chai1.py) up
-to the final trunk recycle — then stops.  diffusion_module.pt and
-confidence_head.pt are never loaded.
-
-Stage 1  Collation
-    Collate(feature_factory, num_key_atoms=128, num_query_atoms=32)([context])
-    → batch dict with "features" and "inputs" sub-dicts.
-
-Stage 2  Feature embedding
-    load_exported("feature_embedding.pt") — embeds TOKEN, TOKEN_PAIR, ATOM,
-    ATOM_PAIR, TEMPLATES, MSA feature groups.
-
-Stage 3  Bond features
-    TokenBondRestraint().generate(batch) → bond_ft
-    load_exported("bond_loss_input_proj.pt") → trunk_bond_feat (added to
-    token_pair_input_feats) + structure_bond_feat (discarded — only needed
-    by the structure decoder we skip).
-
-Stage 4  Token input embedder
-    load_exported("token_embedder.pt") → token_single_initial_repr,
-    token_single_structure_input (discarded), token_pair_initial_repr.
-
-Stage 5  Trunk recycles  ← WE STOP HERE
-    load_exported("trunk.pt") — run num_trunk_recycles times, recycling
-    token_single_trunk_repr and token_pair_trunk_repr.
-    FINAL OUTPUTS:  token_single_trunk_repr [B, L, d_s]
-                    token_pair_trunk_repr   [B, L, L, d_p]
-
-Per-frame coordinate injection
-    Each MD frame's backbone coordinates are written into the
-    AllAtomStructureContext before collation so that the ATOM features seen by
-    the trunk vary per conformation.  Specifically, _patch_atom_coords() calls
-    dataclasses.replace() on AllAtomStructureContext with an updated coordinate
-    field — a shallow copy that shares all other fields with the base context.
-
-    Field name probed in order: atom_gt_coords, all_atom_positions, positions.
-    A diagnostic error with dataclasses.fields() output is raised if none match.
-═══════════════════════════════════════════════════════════════════════════════
 """
 
 import argparse
@@ -107,56 +47,34 @@ logging.basicConfig(
 )
 log = logging.getLogger("fluxion.extract")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Chai-lab 0.6.1 imports
 # ─────────────────────────────────────────────────────────────────────────────
-# Each block is isolated so a failing import tells you exactly what's wrong.
-# Resolve paths with:
-#   python -c "import chai_lab; print(chai_lab.__file__)"
-#   grep -r "def load_exported" $(python -c "import chai_lab,os;print(os.path.dirname(chai_lab.__file__))")
-
 try:
     from chai_lab.chai1 import load_exported  # type: ignore
 except ImportError:
-    raise ImportError(
-        "load_exported not found in chai_lab.chai1. "
-        "Verify chai-lab==0.6.1 is installed.  Try:\n"
-        "  grep -r 'def load_exported' <chai_lab_src>/\n"
-        "then update this import."
-    )
+    raise ImportError("load_exported not found in chai_lab.chai1. Verify chai-lab==0.6.1 is installed.")
 
 try:
     from chai_lab.data.collate.collate import Collate                  # type: ignore
     from chai_lab.chai1 import feature_factory                         # type: ignore
 except ImportError:
-    raise ImportError(
-        "Cannot import Collate or feature_factory. "
-        "Check chai_lab/data/collate/ and chai_lab/chai1.py."
-    )
+    raise ImportError("Cannot import Collate or feature_factory.")
 
 try:
     from chai_lab.data.dataset.all_atom_feature_context import AllAtomFeatureContext  # type: ignore
 except ImportError:
-    raise ImportError(
-        "Cannot import AllAtomFeatureContext.  "
-        "Search: grep -r 'class AllAtomFeatureContext' <chai_lab_src>/"
-    )
+    raise ImportError("Cannot import AllAtomFeatureContext.")
 
 try:
     from chai_lab.data.features.generators.token_bond import TokenBondRestraint  # type: ignore
 except ImportError:
-    raise ImportError(
-        "Cannot import TokenBondRestraint.  "
-        "Check chai_lab/data/features/generators/token_bond.py"
-    )
+    raise ImportError("Cannot import TokenBondRestraint.")
 
-# move_data_to_device: moves nested dicts/lists of tensors to a device.
 try:
     from chai_lab.model.utils import move_data_to_device  # type: ignore
 except ImportError:
     def move_data_to_device(data, device):  # type: ignore
-        """Pure-Python fallback for chai_lab.model.utils.move_data_to_device."""
         if isinstance(data, torch.Tensor):
             return data.to(device)
         if isinstance(data, dict):
@@ -165,14 +83,11 @@ except ImportError:
             return type(data)(move_data_to_device(v, device) for v in data)
         return data
 
-# und_self: outer-product boolean mask, pattern "b i, b j -> b i j"
 try:
     from chai_lab.utils.tensor_utils import und_self  # type: ignore
 except ImportError:
     def und_self(mask, pattern: str):  # type: ignore
-        """Fallback: broadcast mask into a square pair mask."""
         return mask.unsqueeze(-1) & mask.unsqueeze(-2)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Amino acid helpers
@@ -184,107 +99,72 @@ _THREE_TO_ONE: Dict[str, str] = {
     "SER": "S", "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V",
 }
 
-
 def _get_sequence(u: mda.Universe) -> str:
     return "".join(
         _THREE_TO_ONE.get(r.resname.upper(), "X")
         for r in u.select_atoms("protein").residues
     )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # AllAtomFeatureContext construction
 # ─────────────────────────────────────────────────────────────────────────────
-
 def _write_fasta(sequence: str, name: str, path: Path) -> None:
     path.write_text(f">protein|{name}\n{sequence}\n")
 
-
-def _build_feature_context(fasta_path: Path, msa_dir: Optional[Path] = None) -> "AllAtomFeatureContext":
+def _build_feature_context(fasta_path: Path, esm_cache_dir: Path, msa_dir: Optional[Path] = None) -> "AllAtomFeatureContext":
     """Build AllAtomFeatureContext from a FASTA file using chai-lab 0.6.1 internals."""
     from chai_lab.chai1 import make_all_atom_feature_context  # type: ignore
     
-    # We pass a dummy output_dir since we don't save embeddings here
-    dummy_out = fasta_path.parent / "dummy_embeddings"
-    dummy_out.mkdir(exist_ok=True)
+    esm_cache_dir.mkdir(parents=True, exist_ok=True)
     
     return make_all_atom_feature_context(
         fasta_file=fasta_path,
-        output_dir=dummy_out,
+        output_dir=esm_cache_dir,
         use_esm_embeddings=True,
         msa_directory=msa_dir,
         esm_device=torch.device("cpu"), # Keep ESM on CPU to save VRAM
     )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-frame coordinate injection
 # ─────────────────────────────────────────────────────────────────────────────
-
-# Field names probed on AllAtomStructureContext for atom coordinates.
-# Add entries if your 0.6.1 build uses a different name.
 _COORD_FIELD_CANDIDATES = ("atom_gt_coords", "all_atom_positions", "positions", "coords")
-
 
 def _patch_atom_coords(
     context: "AllAtomFeatureContext",
     positions: np.ndarray,   # [N_atoms, 3] float32, Å
 ) -> "AllAtomFeatureContext":
-    """Return a shallow copy of context with atom positions replaced for this frame."""
     struct_ctx = context.structure_context
     
-    # --- THE TOPOLOGY ALIGNMENT PATCH ---
-    # Jaxtyping strictly enforces the idealized sequence atom count.
+    # Topology Alignment Patch
     expected_atoms = struct_ctx.atom_exists_mask.shape[0]
     if positions.shape[0] > expected_atoms:
         positions = positions[:expected_atoms]
     elif positions.shape[0] < expected_atoms:
         pad = np.zeros((expected_atoms - positions.shape[0], 3), dtype=positions.dtype)
         positions = np.vstack([positions, pad])
-    # ------------------------------------
 
     pos_tensor = torch.from_numpy(positions).float()
 
-    # Find the coordinate field
     for field_name in _COORD_FIELD_CANDIDATES:
         if hasattr(struct_ctx, field_name):
             new_struct_ctx = dataclasses.replace(struct_ctx, **{field_name: pos_tensor})
             return dataclasses.replace(context, structure_context=new_struct_ctx)
 
-    # Diagnostic error
-    try:
-        fields = [f.name for f in dataclasses.fields(struct_ctx)]
-    except TypeError:
-        fields = list(vars(struct_ctx).keys())
-    raise AttributeError(
-        f"Cannot find atom coordinate field on {type(struct_ctx).__name__}.\n"
-        f"Available fields: {fields}\n"
-        f"Tried: {_COORD_FIELD_CANDIDATES}\n"
-        "Add the correct name to _COORD_FIELD_CANDIDATES."
-    )
-
+    raise AttributeError(f"Cannot find atom coordinate field on {type(struct_ctx).__name__}.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core 0.6.1 trunk pipeline
 # ─────────────────────────────────────────────────────────────────────────────
-
 _COLLATOR: Optional["Collate"] = None
 
-
 def _get_collator() -> "Collate":
-    """Return a module-level Collate instance (created once)."""
     global _COLLATOR
     if _COLLATOR is None:
-        _COLLATOR = Collate(
-            feature_factory=feature_factory,
-            num_key_atoms=128,
-            num_query_atoms=32,
-        )
+        _COLLATOR = Collate(feature_factory=feature_factory, num_key_atoms=128, num_query_atoms=32)
     return _COLLATOR
 
-
 def _extract_from_batch(batch: Dict, key: str, fallback_keys: Tuple[str, ...] = ()) -> torch.Tensor:
-    """Retrieve a tensor from batch['inputs'] or batch['features'] with a clear error."""
     for subdict_name in ("inputs", "features"):
         subdict = batch.get(subdict_name, {})
         if key in subdict:
@@ -292,15 +172,7 @@ def _extract_from_batch(batch: Dict, key: str, fallback_keys: Tuple[str, ...] = 
         for fk in fallback_keys:
             if fk in subdict:
                 return subdict[fk]
-    inputs_keys   = list(batch.get("inputs",   {}).keys())
-    features_keys = list(batch.get("features", {}).keys())
-    raise KeyError(
-        f"Key '{key}' (or fallbacks {fallback_keys}) not found in batch.\n"
-        f"  batch['inputs']   keys: {inputs_keys}\n"
-        f"  batch['features'] keys: {features_keys}\n"
-        "Update _extract_from_batch() call with the correct key."
-    )
-
+    raise KeyError(f"Key '{key}' (or fallbacks {fallback_keys}) not found in batch.")
 
 @torch.no_grad()
 def run_trunk_pipeline(
@@ -331,7 +203,6 @@ def run_trunk_pipeline(
     if not low_memory:
         batch = move_data_to_device(batch, device=device)
 
-    # Note: Batch remains float32 here so CPU cdist math does not crash
     features = {name: feat for name, feat in batch["features"].items()}
     inputs   = batch["inputs"]
 
@@ -346,16 +217,17 @@ def run_trunk_pipeline(
     msa_mask = _extract_from_batch(batch, "msa_mask", fallback_keys=("msa_seq_mask",))
     _, _, model_size = msa_mask.shape
 
-    template_input_masks = und_self(
-        inputs["template_mask"], "b t n1, b t n2 -> b t n1 n2"
+    raw_template_mask = _extract_from_batch(
+        batch, "template_mask", fallback_keys=("template_exists_mask", "template_token_mask")
     )
+    template_input_masks = und_self(raw_template_mask, "b t n1, b t n2 -> b t n1 n2")
 
     # ── Stage 2: Feature embedding ───────────────────────────────────────────
     embedded_features = feature_embedding.forward(
         crop_size=model_size,
         move_to_device=device,
         return_on_cpu=low_memory,
-        **_to_bf16(features), # Cast right at the door
+        **_to_bf16(features),
     )
 
     token_single_input_feats   = _to_bf16(embedded_features["TOKEN"])
@@ -370,17 +242,14 @@ def run_trunk_pipeline(
     # ── Stage 3: Bond features ───────────────────────────────────────────────
     bond_ft = TokenBondRestraint().generate(batch=batch).data
     
-    # MIXED PRECISION EXCEPTION: bond_loss_input_proj is compiled in float32
     bond_proj_out = bond_loss_input_proj.forward(
         return_on_cpu=low_memory,
         move_to_device=device,
         crop_size=model_size,
-        input=bond_ft.float(), # Force float32 for this specific module
+        input=bond_ft.float(), 
     )
     
-    # Cast the output to bfloat16 so it can safely add to the bf16 token_pair_input_feats
     trunk_bond_feat, _ = _to_bf16(bond_proj_out.chunk(2, dim=-1))
-    
     token_pair_input_feats = token_pair_input_feats + trunk_bond_feat
     del bond_ft, bond_proj_out, trunk_bond_feat
 
@@ -414,7 +283,7 @@ def run_trunk_pipeline(
     token_single_trunk_repr = token_single_initial_repr
     token_pair_trunk_repr   = token_pair_initial_repr
 
-    for recycle_idx in range(num_trunk_recycles):
+    for _ in range(num_trunk_recycles):
         (token_single_trunk_repr, token_pair_trunk_repr) = trunk.forward(
             move_to_device=device,
             token_single_trunk_initial_repr=token_single_initial_repr,
@@ -452,27 +321,17 @@ def run_trunk_pipeline(
 
     return single, pair
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HDF5 sharding
 # ─────────────────────────────────────────────────────────────────────────────
-
 def write_shard(
     protein_dir: Path,
     shard_idx: int,
-    singles: List[torch.Tensor],   # each [L, d_s], CPU, float16
-    pairs:   List[torch.Tensor],   # each [L, L, d_p], CPU, float16; empty if skip_pair
+    singles: List[torch.Tensor],
+    pairs:   List[torch.Tensor],
     frame_indices: List[int],
     skip_pair: bool,
 ) -> Path:
-    """Stack buffered tensors and flush one HDF5 shard to disk.
-
-    Shard datasets
-    ──────────────
-    single     float16  [N, L, d_s]       token single representations
-    pair       float16  [N, L, L, d_p]    token pair representations (if not skip_pair)
-    frame_idx  int32    [N]               original trajectory frame index
-    """
     protein_dir.mkdir(parents=True, exist_ok=True)
     path = protein_dir / f"shard_{shard_idx:06d}.h5"
 
@@ -495,20 +354,14 @@ def write_shard(
             f.create_dataset("pair", data=pair_arr, compression="lzf")
             f.attrs["d_pair"] = int(pair_arr.shape[-1])
 
-    log.info(
-        "Shard %06d written: %d frames, %.1f MB → %s",
-        shard_idx, len(singles), path.stat().st_size / 1e6, path,
-    )
+    log.info("Shard %06d written: %d frames, %.1f MB → %s", shard_idx, len(singles), path.stat().st_size / 1e6, path)
     return path
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Shared manifest  (multi-GPU safe via filelock)
+# Shared manifest
 # ─────────────────────────────────────────────────────────────────────────────
-
 _MANIFEST_FILE = "manifest.json"
 _MANIFEST_LOCK = "manifest.json.lock"
-
 
 def read_manifest(out_dir: Path) -> Dict:
     path = out_dir / _MANIFEST_FILE
@@ -517,15 +370,7 @@ def read_manifest(out_dir: Path) -> Dict:
             return json.load(f)
     return {}
 
-
-def update_manifest(
-    out_dir: Path,
-    protein: str,
-    shard_path: Path,
-    n_frames: int,
-    first_idx: int,
-    last_idx: int,
-) -> None:
+def update_manifest(out_dir: Path, protein: str, shard_path: Path, n_frames: int, first_idx: int, last_idx: int) -> None:
     with FileLock(str(out_dir / _MANIFEST_LOCK)):
         manifest = read_manifest(out_dir)
         manifest.setdefault(protein, {"shards": []})
@@ -538,48 +383,25 @@ def update_manifest(
         with open(out_dir / _MANIFEST_FILE, "w") as f:
             json.dump(manifest, f, indent=2)
 
-
 def frames_already_done(out_dir: Path, protein: str) -> int:
-    return sum(
-        s["n_frames"]
-        for s in read_manifest(out_dir).get(protein, {}).get("shards", [])
-    )
-
+    return sum(s["n_frames"] for s in read_manifest(out_dir).get(protein, {}).get("shards", []))
 
 def shards_already_done(out_dir: Path, protein: str) -> int:
     return len(read_manifest(out_dir).get(protein, {}).get("shards", []))
 
-
-def _flush_shard(
-    protein_dir: Path,
-    out_dir: Path,
-    protein: str,
-    shard_idx: int,
-    singles: List[torch.Tensor],
-    pairs: List[torch.Tensor],
-    frame_indices: List[int],
-    skip_pair: bool,
-) -> None:
+def _flush_shard(protein_dir: Path, out_dir: Path, protein: str, shard_idx: int, singles: List[torch.Tensor], pairs: List[torch.Tensor], frame_indices: List[int], skip_pair: bool) -> None:
     path = write_shard(protein_dir, shard_idx, singles, pairs, frame_indices, skip_pair)
-    update_manifest(
-        out_dir, protein, path,
-        n_frames=len(singles),
-        first_idx=frame_indices[0],
-        last_idx=frame_indices[-1],
-    )
-
+    update_manifest(out_dir, protein, path, n_frames=len(singles), first_idx=frame_indices[0], last_idx=frame_indices[-1])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main extraction loop
 # ─────────────────────────────────────────────────────────────────────────────
-
 def extract(args: argparse.Namespace) -> None:
     device  = torch.device(args.device)
     out_dir = Path(args.out_dir)
     os.makedirs(out_dir, exist_ok=True)
+    esm_cache_dir = out_dir / "esm_cache"
 
-    # ── Load the four compiled modules ONCE — reused across all frames ────────
-    # diffusion_module.pt and confidence_head.pt are intentionally NOT loaded.
     log.info("Loading Chai-1 compiled modules onto %s …", device)
     loaded_modules: Dict[str, torch.jit.ScriptModule] = {
         "feature_embedding":    load_exported("feature_embedding.pt",    device),
@@ -587,42 +409,25 @@ def extract(args: argparse.Namespace) -> None:
         "token_embedder":       load_exported("token_embedder.pt",       device),
         "trunk":                load_exported("trunk.pt",                device),
     }
-    log.info("Modules loaded: %s", list(loaded_modules.keys()))
 
-    # ── FASTA-only mode (no trajectory) ──────────────────────────────────────
     if args.fasta:
         protein = Path(args.fasta).stem
         log.info("FASTA mode: encoding single sequence for %s", protein)
-        context = _build_feature_context(Path(args.fasta))
-        single, pair = run_trunk_pipeline(
-            context, loaded_modules, device,
-            num_trunk_recycles=args.num_trunk_recycles,
-            low_memory=args.low_memory,
-        )
+        context = _build_feature_context(Path(args.fasta), esm_cache_dir)
+        single, pair = run_trunk_pipeline(context, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
         protein_dir = out_dir / protein
-        _flush_shard(
-            protein_dir, out_dir, protein, 0,
-            singles=[single.half()],
-            pairs=[] if args.skip_pair else [pair.half()],
-            frame_indices=[0],
-            skip_pair=args.skip_pair,
-        )
+        _flush_shard(protein_dir, out_dir, protein, 0, singles=[single.half()], pairs=[] if args.skip_pair else [pair.half()], frame_indices=[0], skip_pair=args.skip_pair)
         log.info("Done: single %s  pair %s", tuple(single.shape), tuple(pair.shape))
         return
 
-    # ── MD trajectory mode ────────────────────────────────────────────────────
     protein = Path(args.pdb).stem
-    log.info("MD mode: protein=%s  device=%s  recycles=%d  skip_pair=%s",
-             protein, device, args.num_trunk_recycles, args.skip_pair)
+    log.info("MD mode: protein=%s  device=%s  recycles=%d  skip_pair=%s", protein, device, args.num_trunk_recycles, args.skip_pair)
 
-    # Open trajectory lazily — DCD frames are never fully loaded into RAM
     u       = mda.Universe(args.pdb, args.dcd)
     n_total = len(u.trajectory)
     log.info("Trajectory: %d frames", n_total)
-
     all_atoms = u.select_atoms("protein")
 
-    # ── Resume: skip frames already written ──────────────────────────────────
     n_done      = frames_already_done(out_dir, protein)
     shard_idx   = shards_already_done(out_dir, protein)
     start_frame = n_done
@@ -630,83 +435,35 @@ def extract(args: argparse.Namespace) -> None:
     if start_frame >= n_total:
         log.info("All %d frames already extracted — nothing to do.", n_total)
         return
-    if start_frame > 0:
-        log.info("Resuming from frame %d / %d (shard %d).", start_frame, n_total, shard_idx)
 
-    # ── Build base AllAtomFeatureContext from PDB sequence ────────────────────
-    # Written to a temp FASTA; chai-lab's context builder handles sequencing.
     sequence = _get_sequence(u)
-    log.info("Sequence: %d residues", len(sequence))
-
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".fasta", prefix=f"{protein}_", delete=False
-    ) as fh:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".fasta", prefix=f"{protein}_", delete=False) as fh:
         fasta_tmp = Path(fh.name)
         _write_fasta(sequence, protein, fasta_tmp)
-        log.info("Temporary FASTA: %s", fasta_tmp)
-
     try:
-        base_context = _build_feature_context(fasta_tmp)
+        base_context = _build_feature_context(fasta_tmp, esm_cache_dir)
     finally:
         fasta_tmp.unlink(missing_ok=True)
 
-    # ── Storage estimate ──────────────────────────────────────────────────────
-    if not args.skip_pair:
-        L = len(sequence)
-        d_p_est       = 128
-        n_shards_rem  = (n_total - start_frame + args.shard_size - 1) // args.shard_size
-        gb_per_shard  = (L * L * d_p_est * 2 * args.shard_size) / 1e9
-        log.info(
-            "Pair storage estimate: ~%.1f GB/shard × %d shards = ~%.0f GB.  "
-            "Use --skip-pair or --shard-size 100 to reduce.",
-            gb_per_shard, n_shards_rem, gb_per_shard * n_shards_rem,
-        )
-
-    # ── Pre-flight: validate pipeline on frame 0 ─────────────────────────────
     log.info("Pre-flight: validating trunk pipeline on frame 0 …")
     u.trajectory[0]
     test_ctx = _patch_atom_coords(base_context, all_atoms.positions.copy())
-    s0, p0 = run_trunk_pipeline(
-        test_ctx, loaded_modules, device,
-        num_trunk_recycles=args.num_trunk_recycles,
-        low_memory=args.low_memory,
-    )
-    assert s0.dim() == 2, f"Expected single [L, d_s], got {tuple(s0.shape)}"
-    assert p0.dim() == 3, f"Expected pair [L, L, d_p], got {tuple(p0.shape)}"
+    s0, p0 = run_trunk_pipeline(test_ctx, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
     d_s, d_p = s0.shape[-1], p0.shape[-1]
     log.info("  single: %s   pair: %s   ✓", tuple(s0.shape), tuple(p0.shape))
     del s0, p0, test_ctx
 
-    # ── Shard accumulation buffers ────────────────────────────────────────────
-    singles_buf:   List[torch.Tensor] = []
-    pairs_buf:     List[torch.Tensor] = []
-    frame_idx_buf: List[int]          = []
-
+    singles_buf, pairs_buf, frame_idx_buf = [], [], []
     protein_dir = out_dir / protein
     t0          = time.perf_counter()
     frames_done = 0
 
-    pbar = tqdm(
-        u.trajectory[start_frame:],
-        total=n_total - start_frame,
-        unit="frame",
-        dynamic_ncols=True,
-        desc=protein,
-        smoothing=0.1,
-    )
+    pbar = tqdm(u.trajectory[start_frame:], total=n_total - start_frame, unit="frame", dynamic_ncols=True, desc=protein, smoothing=0.1)
 
     for ts in pbar:
-        # CRITICAL: .copy() before next ts.next() overwrites the MDAnalysis buffer
-        positions = all_atoms.positions.copy()   # [N_atoms, 3] Å
-
-        # Shallow-copy context with this frame's coordinates injected
+        positions = all_atoms.positions.copy()
         frame_context = _patch_atom_coords(base_context, positions)
-
-        single, pair = run_trunk_pipeline(
-            frame_context, loaded_modules, device,
-            num_trunk_recycles=args.num_trunk_recycles,
-            low_memory=args.low_memory,
-        )
+        single, pair = run_trunk_pipeline(frame_context, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
 
         singles_buf.append(single.half())
         if not args.skip_pair:
@@ -715,69 +472,41 @@ def extract(args: argparse.Namespace) -> None:
         frames_done += 1
 
         if len(singles_buf) >= args.shard_size:
-            _flush_shard(
-                protein_dir, out_dir, protein, shard_idx,
-                singles_buf, pairs_buf, frame_idx_buf, args.skip_pair,
-            )
+            _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair)
             shard_idx += 1
-            singles_buf.clear()
-            pairs_buf.clear()
-            frame_idx_buf.clear()
+            singles_buf.clear(); pairs_buf.clear(); frame_idx_buf.clear()
 
         fps = frames_done / max(time.perf_counter() - t0, 1e-9)
         pbar.set_postfix(fps=f"{fps:.1f}", shard=shard_idx, d_s=d_s, d_p=d_p)
 
     if singles_buf:
-        _flush_shard(
-            protein_dir, out_dir, protein, shard_idx,
-            singles_buf, pairs_buf, frame_idx_buf, args.skip_pair,
-        )
+        _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair)
 
     elapsed = time.perf_counter() - t0
-    log.info(
-        "Extraction complete: %d frames in %.1fs (%.2f fps), %d shards.",
-        frames_done, elapsed, frames_done / max(elapsed, 1e-9), shard_idx + 1,
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────────────────────────────────────
+    log.info("Extraction complete: %d frames in %.1fs (%.2f fps), %d shards.", frames_done, elapsed, frames_done / max(elapsed, 1e-9), shard_idx + 1)
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Extract Chai-1 trunk latents from an ATLAS MD trajectory (chai-lab 0.6.1).",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-
+    p = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     src = p.add_mutually_exclusive_group()
-    src.add_argument("--pdb",   help="Reference topology (.pdb).  Pair with --dcd.")
-    src.add_argument("--fasta", help="FASTA file for single-sequence encoding (no trajectory).")
-
-    p.add_argument("--dcd",        help="Trajectory file (.dcd).  Required when using --pdb.")
-    p.add_argument("--out-dir",    required=True, help="Scratch root for HDF5 shards.")
-    p.add_argument("--shard-size", type=int, default=1000,
-                   help="Frames per HDF5 shard.  Reduce to 100 for L > 400 with pair reps.")
-    p.add_argument("--device",     default="cuda",
-                   help="PyTorch device string (cuda, cuda:1, cpu).")
-    p.add_argument("--num-trunk-recycles", type=int, default=3,
-                   help="Number of trunk recycle iterations (mirrors num_trunk_recycles in run_folding_on_context).")
-    p.add_argument("--low-memory", action="store_true",
-                   help="Keep tensors on CPU between modules; move to device per-call.  "
-                        "Slower but uses less peak VRAM.")
-    p.add_argument("--skip-pair", action="store_true",
-                   help="Skip storing pair representations [L, L, d_p].  "
-                        "Pair reps are O(L²) larger than single reps.")
-
+    src.add_argument("--pdb", help="Reference topology (.pdb).")
+    src.add_argument("--fasta", help="FASTA file.")
+    p.add_argument("--dcd", help="Trajectory file (.dcd).")
+    p.add_argument("--out-dir", required=True)
+    p.add_argument("--shard-size", type=int, default=1000)
+    p.add_argument("--device", default="cuda")
+    p.add_argument("--num-trunk-recycles", type=int, default=3)
+    p.add_argument("--low-memory", action="store_true")
+    p.add_argument("--skip-pair", action="store_true")
+    
     args = p.parse_args()
-
+    
+    # --- CLI Safety Validations ---
     if args.fasta is None and args.pdb is None:
         p.error("One of --pdb or --fasta is required.")
     if args.pdb and not args.dcd:
         p.error("--dcd is required when using --pdb.")
-
+        
     return args
-
 
 if __name__ == "__main__":
     args = parse_args()
