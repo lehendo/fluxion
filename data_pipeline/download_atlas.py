@@ -50,26 +50,26 @@ OUT_DIR   = Path("/scratch/arjunc4/atlas_raw")
 # and published experimental validation data (NMR, HDX-MS, smFRET).
 # These are strong candidates for the hero experiments.
 PILOT_SET = [
-    "1ake_A",   # Adenylate kinase      — open/closed benchmark, rich NMR data
-    "4lzt_A",   # T4 lysozyme           — hinge motion, classic NMR benchmark
-    "1vjg_A",   # DHFR                  — loop dynamics, HDX-MS available
-    "1cwa_A",   # Cyclophilin A         — conformational exchange by NMR
-    "2rgp_A",   # p38 MAPK              — DFG loop, drug resistance model
-    "1l2y_A",   # Trp-cage              — fast folder, well-simulated
-    "1ubq_A",   # Ubiquitin             — extensive NMR order parameters
-    "2hhb_A",   # Hemoglobin alpha      — allosteric dynamics
-    "1f0y_A",   # Barnase               — folding/unfolding benchmark
-    "1hz5_A",   # BPTI                  — slow dynamics, long-timescale benchmark
-    "2hhd_A",   # Hemoglobin beta       — allosteric pair with 2hhb
-    "3k0m_A",   # HIV protease          — flap dynamics, drug target
-    "1eza_A",   # Calmodulin            — large conformational change on Ca2+ binding
-    "1mbn_A",   # Myoglobin             — ligand binding/release dynamics
-    "1hrc_A",   # Cytochrome c          — electron transfer, redox dynamics
-    "3aid_A",   # HIV protease (bound)  — compare vs unbound 3k0m
-    "1aon_A",   # GroEL subunit         — large chaperone machinery
-    "2crk_A",   # CDK2                  — kinase DFG-flip, drug model
-    "1fme_A",   # Engrailed HD          — fast folding protein
-    "3chy_A",   # CheY                  — signaling protein, phosphorylation dynamics
+    "16pk_A",
+    "1a62_A",
+    "1ab1_A",
+    "1af7_A",
+    "1ah7_A",
+    "1ail_A",
+    "1aol_A",
+    "1b0n_A",
+    "1b25_D",
+    "1b2s_E",
+    "1b2s_F",
+    "1b8d_K",
+    "1bcp_F",
+    "1bgf_A",
+    "1bkp_A",
+    "1bq8_A",
+    "1btk_A",
+    "1bx7_A",
+    "1bxy_A",
+    "1bxy_B",
 ]
 
 
