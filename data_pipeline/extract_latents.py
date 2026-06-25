@@ -346,9 +346,8 @@ def run_trunk_pipeline(
     msa_mask = _extract_from_batch(batch, "msa_mask", fallback_keys=("msa_seq_mask",))
     _, _, model_size = msa_mask.shape
 
-    template_input_masks = _extract_from_batch(
-        batch, "template_input_masks",
-        fallback_keys=("template_mask", "template_exists_mask"),
+    template_input_masks = und_self(
+        inputs["template_mask"], "b t n1, b t n2 -> b t n1 n2"
     )
 
     # ── Stage 2: Feature embedding ───────────────────────────────────────────
