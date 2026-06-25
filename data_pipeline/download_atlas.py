@@ -154,6 +154,7 @@ def download_one(protein_id: str, aria2c_bin: str = "aria2c") -> bool:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    global OUT_DIR
     parser = argparse.ArgumentParser(description="Download ATLAS MD trajectories")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--list",  action="store_true", help="Print all available protein IDs and exit")
@@ -163,7 +164,6 @@ def main() -> None:
     parser.add_argument("--out-dir", default=str(OUT_DIR), help="Output directory (default: %(default)s)")
     args = parser.parse_args()
 
-    global OUT_DIR
     OUT_DIR = Path(args.out_dir)
 
     # --list
