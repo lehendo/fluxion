@@ -243,7 +243,7 @@ def _patch_atom_coords(
         positions = np.vstack([positions, pad])
     # ------------------------------------
 
-    pos_tensor = torch.from_numpy(positions).float()   # [N_atoms, 3]
+    pos_tensor = torch.from_numpy(positions).bfloat16()   # Match Chai-1's precision
 
     # Find the coordinate field
     for field_name in _COORD_FIELD_CANDIDATES:
@@ -341,6 +341,18 @@ def run_trunk_pipeline(
     batch = _get_collator()([feature_context])
     if not low_memory:
         batch = move_data_to_device(batch, device=device)
+
+    # Convert all floating point tensors in the collated batch to bfloat16
+    def _to_bf16(d):
+        if isinstance(d, torch.Tensor) and torch.is_floating_point(d):
+            return d.bfloat16()
+        if isinstance(d, dict):
+            return {k: _to_bf16(v) for k, v in d.items()}
+        if isinstance(d, (list, tuple)):
+            return type(d)(_to_bf16(v) for v in d)
+        return d
+
+    batch = _to_bf16(batch)
 
     features = {name: feat for name, feat in batch["features"].items()}
     inputs   = batch["inputs"]
