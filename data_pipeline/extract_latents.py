@@ -370,15 +370,18 @@ def run_trunk_pipeline(
 
     # ── Stage 3: Bond features ───────────────────────────────────────────────
     bond_ft = TokenBondRestraint().generate(batch=batch).data
+    
+    # MIXED PRECISION EXCEPTION: bond_loss_input_proj is compiled in float32
     bond_proj_out = bond_loss_input_proj.forward(
         return_on_cpu=low_memory,
         move_to_device=device,
         crop_size=model_size,
-        input=_to_bf16(bond_ft),
+        input=bond_ft.float(), # Force float32 for this specific module
     )
+    
+    # Cast the output to bfloat16 so it can safely add to the bf16 token_pair_input_feats
     trunk_bond_feat, _ = _to_bf16(bond_proj_out.chunk(2, dim=-1))
     
-    # Both are strictly bf16, preventing float32 type promotion
     token_pair_input_feats = token_pair_input_feats + trunk_bond_feat
     del bond_ft, bond_proj_out, trunk_bond_feat
 
