@@ -50,26 +50,26 @@ OUT_DIR   = Path("/scratch/arjunc4/atlas_raw")
 # and published experimental validation data (NMR, HDX-MS, smFRET).
 # These are strong candidates for the hero experiments.
 PILOT_SET = [
-    "1AKE_A",   # Adenylate kinase      — open/closed benchmark, rich NMR data
-    "4LZT_A",   # T4 lysozyme           — hinge motion, classic NMR benchmark
-    "1VJG_A",   # DHFR                  — loop dynamics, HDX-MS available
-    "1CWA_A",   # Cyclophilin A         — conformational exchange by NMR
-    "2RGP_A",   # p38 MAPK              — DFG loop, drug resistance model
-    "1L2Y_A",   # Trp-cage              — fast folder, well-simulated
-    "1UBQ_A",   # Ubiquitin             — extensive NMR order parameters
-    "2HHB_A",   # Hemoglobin alpha      — allosteric dynamics
-    "1F0Y_A",   # Barnase               — folding/unfolding benchmark
-    "1HZ5_A",   # BPTI                  — slow dynamics, long-timescale benchmark
-    "2HHD_A",   # Hemoglobin beta       — allosteric pair with 2HHB
-    "3K0M_A",   # HIV protease          — flap dynamics, drug target
-    "1EZA_A",   # Calmodulin            — large conformational change on Ca2+ binding
-    "1MBN_A",   # Myoglobin             — ligand binding/release dynamics
-    "1HRC_A",   # Cytochrome c          — electron transfer, redox dynamics
-    "3AID_A",   # HIV protease (bound)  — compare vs unbound 3K0M
-    "1AON_A",   # GroEL subunit         — large chaperone machinery
-    "2CRK_A",   # CDK2                  — kinase DFG-flip, drug model
-    "1FME_A",   # Engrailed HD          — fast folding protein
-    "3CHY_A",   # CheY                  — signaling protein, phosphorylation dynamics
+    "1ake_A",   # Adenylate kinase      — open/closed benchmark, rich NMR data
+    "4lzt_A",   # T4 lysozyme           — hinge motion, classic NMR benchmark
+    "1vjg_A",   # DHFR                  — loop dynamics, HDX-MS available
+    "1cwa_A",   # Cyclophilin A         — conformational exchange by NMR
+    "2rgp_A",   # p38 MAPK              — DFG loop, drug resistance model
+    "1l2y_A",   # Trp-cage              — fast folder, well-simulated
+    "1ubq_A",   # Ubiquitin             — extensive NMR order parameters
+    "2hhb_A",   # Hemoglobin alpha      — allosteric dynamics
+    "1f0y_A",   # Barnase               — folding/unfolding benchmark
+    "1hz5_A",   # BPTI                  — slow dynamics, long-timescale benchmark
+    "2hhd_A",   # Hemoglobin beta       — allosteric pair with 2hhb
+    "3k0m_A",   # HIV protease          — flap dynamics, drug target
+    "1eza_A",   # Calmodulin            — large conformational change on Ca2+ binding
+    "1mbn_A",   # Myoglobin             — ligand binding/release dynamics
+    "1hrc_A",   # Cytochrome c          — electron transfer, redox dynamics
+    "3aid_A",   # HIV protease (bound)  — compare vs unbound 3k0m
+    "1aon_A",   # GroEL subunit         — large chaperone machinery
+    "2crk_A",   # CDK2                  — kinase DFG-flip, drug model
+    "1fme_A",   # Engrailed HD          — fast folding protein
+    "3chy_A",   # CheY                  — signaling protein, phosphorylation dynamics
 ]
 
 
