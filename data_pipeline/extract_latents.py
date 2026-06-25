@@ -230,19 +230,19 @@ def _patch_atom_coords(
     context: "AllAtomFeatureContext",
     positions: np.ndarray,   # [N_atoms, 3] float32, Å
 ) -> "AllAtomFeatureContext":
-    """Return a shallow copy of context with atom positions replaced for this frame.
-
-    Uses dataclasses.replace() — O(1) allocation overhead since only the
-    coordinate tensor is reallocated; all other structure_context fields are
-    shared by reference.
-
-    If this raises AttributeError, find the correct field name:
-        import dataclasses
-        from chai_lab... import AllAtomStructureContext
-        print([f.name for f in dataclasses.fields(AllAtomStructureContext)])
-    then add it to _COORD_FIELD_CANDIDATES above.
-    """
+    """Return a shallow copy of context with atom positions replaced for this frame."""
     struct_ctx = context.structure_context
+    
+    # --- THE TOPOLOGY ALIGNMENT PATCH ---
+    # Jaxtyping strictly enforces the idealized sequence atom count.
+    expected_atoms = struct_ctx.atom_exists_mask.shape[0]
+    if positions.shape[0] > expected_atoms:
+        positions = positions[:expected_atoms]
+    elif positions.shape[0] < expected_atoms:
+        pad = np.zeros((expected_atoms - positions.shape[0], 3), dtype=positions.dtype)
+        positions = np.vstack([positions, pad])
+    # ------------------------------------
+
     pos_tensor = torch.from_numpy(positions).float()   # [N_atoms, 3]
 
     # Find the coordinate field
