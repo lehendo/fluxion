@@ -310,50 +310,28 @@ def run_trunk_pipeline(
     num_trunk_recycles: int = 3,
     low_memory: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Replicate run_folding_on_context() through the trunk, then stop.
-
-    Faithfully mirrors the orchestration in chai_lab.chai1.run_folding_on_context,
-    stopping after the trunk recycles and before the diffusion decoder.
-    diffusion_module.pt and confidence_head.pt are never loaded or called.
-
-    Parameters
-    ----------
-    feature_context   : AllAtomFeatureContext for this frame / sequence.
-    loaded_modules    : dict with keys feature_embedding, bond_loss_input_proj,
-                        token_embedder, trunk — loaded once in extract() and
-                        reused across all frames.
-    device            : target CUDA/CPU device.
-    num_trunk_recycles: number of trunk recycle passes (default: 3).
-    low_memory        : if True, tensors stay on CPU between modules (slower
-                        but uses less VRAM).
-
-    Returns
-    -------
-    single : Tensor [L, d_s]      token-level single representation (fp32, on CPU)
-    pair   : Tensor [L, L, d_p]   token-level pair representation   (fp32, on CPU)
-    """
+    
     feature_embedding    = loaded_modules["feature_embedding"]
     bond_loss_input_proj = loaded_modules["bond_loss_input_proj"]
     token_input_embedder = loaded_modules["token_embedder"]
     trunk                = loaded_modules["trunk"]
+
+    # ── Strict Precision Airlock ──
+    def _to_bf16(x):
+        if isinstance(x, torch.Tensor) and torch.is_floating_point(x):
+            return x.bfloat16()
+        if isinstance(x, dict):
+            return {k: _to_bf16(v) for k, v in x.items()}
+        if isinstance(x, (list, tuple)):
+            return type(x)(_to_bf16(v) for v in x)
+        return x
 
     # ── Stage 1: Collation ───────────────────────────────────────────────────
     batch = _get_collator()([feature_context])
     if not low_memory:
         batch = move_data_to_device(batch, device=device)
 
-    # Convert all floating point tensors in the collated batch to bfloat16
-    def _to_bf16(d):
-        if isinstance(d, torch.Tensor) and torch.is_floating_point(d):
-            return d.bfloat16()
-        if isinstance(d, dict):
-            return {k: _to_bf16(v) for k, v in d.items()}
-        if isinstance(d, (list, tuple)):
-            return type(d)(_to_bf16(v) for v in d)
-        return d
-
-    batch = _to_bf16(batch)
-
+    # Note: Batch remains float32 here so CPU cdist math does not crash
     features = {name: feat for name, feat in batch["features"].items()}
     inputs   = batch["inputs"]
 
@@ -365,8 +343,6 @@ def run_trunk_pipeline(
     token_pair_mask      = und_self(token_single_mask, "b i, b j -> b i j")
     block_atom_pair_mask = inputs["block_atom_pair_mask"]
 
-    # MSA mask is used only to derive model_size (crop / sequence length).
-    # Shape: [B, msa_depth, n_tokens] — last dim is the sequence crop size.
     msa_mask = _extract_from_batch(batch, "msa_mask", fallback_keys=("msa_seq_mask",))
     _, _, model_size = msa_mask.shape
 
@@ -380,19 +356,16 @@ def run_trunk_pipeline(
         crop_size=model_size,
         move_to_device=device,
         return_on_cpu=low_memory,
-        **features,
+        **_to_bf16(features), # Cast right at the door
     )
 
-    token_single_input_feats   = embedded_features["TOKEN"]
-    token_pair_input_feats, token_pair_structure_input_feats = (
-        embedded_features["TOKEN_PAIR"].chunk(2, dim=-1)
-    )
-    atom_single_input_feats, _ = embedded_features["ATOM"].chunk(2, dim=-1)
-    block_atom_pair_input_feats, _ = embedded_features["ATOM_PAIR"].chunk(2, dim=-1)
-    template_input_feats = embedded_features["TEMPLATES"]
-    msa_input_feats      = embedded_features["MSA"]
+    token_single_input_feats   = _to_bf16(embedded_features["TOKEN"])
+    token_pair_input_feats, _  = _to_bf16(embedded_features["TOKEN_PAIR"].chunk(2, dim=-1))
+    atom_single_input_feats, _ = _to_bf16(embedded_features["ATOM"].chunk(2, dim=-1))
+    block_atom_pair_input_feats, _ = _to_bf16(embedded_features["ATOM_PAIR"].chunk(2, dim=-1))
+    template_input_feats       = _to_bf16(embedded_features["TEMPLATES"])
+    msa_input_feats            = _to_bf16(embedded_features["MSA"])
 
-    # Free the full embedded_features dict to reclaim VRAM
     del embedded_features
 
     # ── Stage 3: Bond features ───────────────────────────────────────────────
@@ -401,16 +374,16 @@ def run_trunk_pipeline(
         return_on_cpu=low_memory,
         move_to_device=device,
         crop_size=model_size,
-        input=bond_ft,
+        input=_to_bf16(bond_ft),
     )
-    trunk_bond_feat, _ = bond_proj_out.chunk(2, dim=-1)
-    # structure_bond_feat (second chunk) is only needed by the structure decoder
-    # which we explicitly skip.
+    trunk_bond_feat, _ = _to_bf16(bond_proj_out.chunk(2, dim=-1))
+    
+    # Both are strictly bf16, preventing float32 type promotion
     token_pair_input_feats = token_pair_input_feats + trunk_bond_feat
     del bond_ft, bond_proj_out, trunk_bond_feat
 
     # ── Stage 4: Token input embedder ────────────────────────────────────────
-    token_input_embedder_outputs: Tuple[torch.Tensor, ...] = token_input_embedder.forward(
+    token_input_embedder_outputs = token_input_embedder.forward(
         return_on_cpu=low_memory,
         move_to_device=device,
         token_single_input_feats=token_single_input_feats,
@@ -424,25 +397,18 @@ def run_trunk_pipeline(
         atom_token_indices=atom_token_indices,
         crop_size=model_size,
     )
-    # Outputs: (token_single_initial_repr, token_single_structure_input, token_pair_initial_repr)
-    # token_single_structure_input is only used by the structure decoder — discard it.
-    token_single_initial_repr = token_input_embedder_outputs[0]
-    token_pair_initial_repr   = token_input_embedder_outputs[2]
+    token_single_initial_repr = _to_bf16(token_input_embedder_outputs[0])
+    token_pair_initial_repr   = _to_bf16(token_input_embedder_outputs[2])
     del token_input_embedder_outputs
 
-    # Free intermediate embedding tensors before the trunk loop
     del (
         token_single_input_feats, token_pair_input_feats,
         atom_single_input_feats, block_atom_pair_input_feats,
-        token_pair_structure_input_feats,
     )
     if device.type == "cuda":
         torch.cuda.empty_cache()
 
     # ── Stage 5: Trunk recycles ──────────────────────────────────────────────
-    # This is the final stage we run.  After this loop, token_single_trunk_repr
-    # and token_pair_trunk_repr are the latents we save.  We never load or call
-    # diffusion_module.pt or confidence_head.pt.
     token_single_trunk_repr = token_single_initial_repr
     token_pair_trunk_repr   = token_pair_initial_repr
 
@@ -451,8 +417,8 @@ def run_trunk_pipeline(
             move_to_device=device,
             token_single_trunk_initial_repr=token_single_initial_repr,
             token_pair_trunk_initial_repr=token_pair_initial_repr,
-            token_single_trunk_repr=token_single_trunk_repr,   # recycled
-            token_pair_trunk_repr=token_pair_trunk_repr,       # recycled
+            token_single_trunk_repr=token_single_trunk_repr,
+            token_pair_trunk_repr=token_pair_trunk_repr,
             msa_input_feats=msa_input_feats,
             msa_mask=msa_mask,
             template_input_feats=template_input_feats,
@@ -461,8 +427,10 @@ def run_trunk_pipeline(
             token_pair_mask=token_pair_mask,
             crop_size=model_size,
         )
+        token_single_trunk_repr = _to_bf16(token_single_trunk_repr)
+        token_pair_trunk_repr   = _to_bf16(token_pair_trunk_repr)
 
-    # ── Short-circuit: discard everything except the trunk outputs ────────────
+    # ── Short-circuit ────────────────────────────────────────────────────────
     del (
         token_single_initial_repr, token_pair_initial_repr,
         msa_input_feats, msa_mask,
@@ -473,9 +441,8 @@ def run_trunk_pipeline(
     if device.type == "cuda":
         torch.cuda.empty_cache()
 
-    # Strip batch dim [1, L, ...] → [L, ...]
-    single = token_single_trunk_repr.squeeze(0).cpu()   # [L, d_s]
-    pair   = token_pair_trunk_repr.squeeze(0).cpu()     # [L, L, d_p]
+    single = token_single_trunk_repr.squeeze(0).cpu()
+    pair   = token_pair_trunk_repr.squeeze(0).cpu()
 
     del token_single_trunk_repr, token_pair_trunk_repr
     if device.type == "cuda":
