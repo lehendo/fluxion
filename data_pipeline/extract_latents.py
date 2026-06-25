@@ -423,7 +423,7 @@ def extract(args: argparse.Namespace) -> None:
     protein = Path(args.pdb).stem
     log.info("MD mode: protein=%s  device=%s  recycles=%d  skip_pair=%s", protein, device, args.num_trunk_recycles, args.skip_pair)
 
-    u       = mda.Universe(args.pdb, args.dcd)
+    u       = mda.Universe(args.pdb, args.traj)
     n_total = len(u.trajectory)
     log.info("Trajectory: %d frames", n_total)
     all_atoms = u.select_atoms("protein")
@@ -490,7 +490,7 @@ def parse_args() -> argparse.Namespace:
     src = p.add_mutually_exclusive_group()
     src.add_argument("--pdb", help="Reference topology (.pdb).")
     src.add_argument("--fasta", help="FASTA file.")
-    p.add_argument("--dcd", help="Trajectory file (.dcd).")
+    p.add_argument("--traj", help="Trajectory file (.xtc or .dcd — MDAnalysis autodetects).")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--shard-size", type=int, default=1000)
     p.add_argument("--device", default="cuda")
@@ -503,8 +503,8 @@ def parse_args() -> argparse.Namespace:
     # --- CLI Safety Validations ---
     if args.fasta is None and args.pdb is None:
         p.error("One of --pdb or --fasta is required.")
-    if args.pdb and not args.dcd:
-        p.error("--dcd is required when using --pdb.")
+    if args.pdb and not args.traj:
+        p.error("--traj is required when using --pdb.")
         
     return args
 
