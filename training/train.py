@@ -13,12 +13,17 @@ checkpoint cleanly before the walltime kill arrives.
 """
 
 import os
+import sys
 import random
 import signal
-import sys
 import argparse
 from copy import deepcopy
 from pathlib import Path
+
+# Ensure repo root is on sys.path regardless of invocation directory,
+# so that `from training.*` and `from data_pipeline.*` resolve correctly
+# when torchrun sets the working directory to something unexpected.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
 import torch.distributed as dist
@@ -56,12 +61,38 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float 
             ema_params[name].mul_(decay).add_(param.data, alpha=1.0 - decay)
 
 
+def get_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
+    """
+    Exclude 1-D parameters (biases, LayerNorm weight/bias) from weight decay.
+    Applying L2 penalty to these harms training without regularization benefit.
+    """
+    decay, no_decay = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim <= 1 or name.endswith(".bias"):
+            no_decay.append(param)
+        else:
+            decay.append(param)
+    return [
+        {"params": decay,    "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+
+
+def warmup_lambda(step: int, warmup_steps: int) -> float:
+    """Linear warmup, then constant LR."""
+    if step < warmup_steps:
+        return step / max(1, warmup_steps)
+    return 1.0
+
+
 def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # 1. Distributed setup
     # ------------------------------------------------------------------
     dist.init_process_group(backend="nccl")
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank  = int(os.environ["LOCAL_RANK"])
     global_rank = int(os.environ["RANK"])
     device = torch.device(f"cuda:{local_rank}")
     torch.cuda.set_device(device)
@@ -72,16 +103,23 @@ def main(args: argparse.Namespace) -> None:
     signal.signal(signal.SIGUSR1, handle_sigusr1)
 
     # ------------------------------------------------------------------
-    # 3. Model + EMA + optimizer
+    # 3. Model + EMA + optimizer + warmup scheduler
     # ------------------------------------------------------------------
-    model = FluxionDiT().to(device)
+    model     = FluxionDiT().to(device)
     ema_model = deepcopy(model).requires_grad_(False)
 
     optimizer = torch.optim.AdamW(
-        model.parameters(),
+        get_param_groups(model, args.weight_decay),
         lr=args.lr,
-        weight_decay=args.weight_decay,
+        betas=(0.9, 0.999),
+        eps=1e-8,
     )
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer,
+        lr_lambda=lambda step: warmup_lambda(step, args.warmup_steps),
+    )
+
     matcher = FlowMatcher()
 
     # ------------------------------------------------------------------
@@ -93,8 +131,8 @@ def main(args: argparse.Namespace) -> None:
         model,
         ema_model,
         optimizer,
-        scheduler=None,
-        device=device,
+        scheduler,
+        device,
     )
 
     model = DDP(model, device_ids=[local_rank])
@@ -116,7 +154,6 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # 6. Training loop
     # ------------------------------------------------------------------
-    scaler = torch.cuda.amp.GradScaler()
     model.train()
 
     for epoch in range(start_epoch, args.epochs):
@@ -129,15 +166,15 @@ def main(args: argparse.Namespace) -> None:
                 if global_rank == 0:
                     save_checkpoint(
                         checkpoint_dir, step, epoch,
-                        model.module, ema_model, optimizer, scheduler=None,
+                        model.module, ema_model, optimizer, scheduler,
                     )
                     print(f"Graceful exit at step {step}.", flush=True)
                 dist.barrier()
                 dist.destroy_process_group()
                 sys.exit(0)
 
-            z0 = z0.to(device, non_blocking=True)
-            z1 = z1.to(device, non_blocking=True)
+            z0   = z0.to(device,   non_blocking=True)
+            z1   = z1.to(device,   non_blocking=True)
             pair = pair.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
@@ -145,16 +182,18 @@ def main(args: argparse.Namespace) -> None:
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                 loss = matcher.compute_loss(model, z0, z1, pair)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+            scheduler.step()
 
             update_ema(ema_model, model.module)
             step += 1
 
             if global_rank == 0 and step % args.log_interval == 0:
+                lr_now = scheduler.get_last_lr()[0]
                 print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss.item():.4f}",
+                    f"Epoch {epoch} | Step {step} | Loss: {loss.item():.4f} | LR: {lr_now:.2e}",
                     flush=True,
                 )
 
@@ -162,7 +201,7 @@ def main(args: argparse.Namespace) -> None:
         if global_rank == 0:
             save_checkpoint(
                 checkpoint_dir, step, epoch + 1,
-                model.module, ema_model, optimizer, scheduler=None,
+                model.module, ema_model, optimizer, scheduler,
             )
 
     dist.destroy_process_group()
@@ -170,12 +209,13 @@ def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--scratch-dir", type=str, required=True)
-    parser.add_argument("--protein-id", type=str, required=True)
-    parser.add_argument("--batch-size", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--weight-decay", type=float, default=1e-5)
-    parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--log-interval", type=int, default=50)
+    parser.add_argument("--scratch-dir",    type=str,   required=True)
+    parser.add_argument("--protein-id",     type=str,   required=True)
+    parser.add_argument("--batch-size",     type=int,   default=8)
+    parser.add_argument("--lr",             type=float, default=1e-4)
+    parser.add_argument("--weight-decay",   type=float, default=1e-5)
+    parser.add_argument("--warmup-steps",   type=int,   default=2000)
+    parser.add_argument("--epochs",         type=int,   default=100)
+    parser.add_argument("--log-interval",   type=int,   default=50)
     args = parser.parse_args()
     main(args)
