@@ -243,7 +243,7 @@ def _patch_atom_coords(
         positions = np.vstack([positions, pad])
     # ------------------------------------
 
-    pos_tensor = torch.from_numpy(positions).bfloat16()   # Match Chai-1's precision
+    pos_tensor = torch.from_numpy(positions).float()
 
     # Find the coordinate field
     for field_name in _COORD_FIELD_CANDIDATES:
