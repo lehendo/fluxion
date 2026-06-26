@@ -76,8 +76,15 @@ def extract_pair_for_protein(
     fasta_path = out_protein_dir / f"{protein_id}.fasta"
     _write_fasta(sequence, protein_id, fasta_path)
 
-    print(f"[{protein_id}] Building feature context (ESM may take a few minutes)...", flush=True)
-    feature_context = _build_feature_context(fasta_path, esm_cache)
+    print(f"[{protein_id}] Building feature context (ESM on {device})...", flush=True)
+    # Load ESM on the GPU to avoid OOM-killing CPU RAM on memory-limited nodes.
+    from chai_lab.chai1 import make_all_atom_feature_context
+    feature_context = make_all_atom_feature_context(
+        fasta_file=fasta_path,
+        output_dir=esm_cache,
+        use_esm_embeddings=True,
+        esm_device=device,
+    )
     feature_context = _patch_atom_coords(feature_context, positions)
 
     print(f"[{protein_id}] Running Chai-1 trunk...", flush=True)
@@ -98,14 +105,19 @@ def main() -> None:
     parser.add_argument("--atlas-raw",   required=True, type=Path)
     parser.add_argument("--out-dir",     required=True, type=Path)
     parser.add_argument("--protein-id",  default=None,
-                        help="Single protein to process. If omitted, uses "
-                             "SLURM_ARRAY_TASK_ID to select from sorted protein list.")
+                        help="Single protein to process.")
+    parser.add_argument("--all",  action="store_true",
+                        help="Process all proteins in --atlas-raw sequentially "
+                             "(one Python process, ESM loads once).")
     parser.add_argument("--device",      default="cuda")
     args = parser.parse_args()
 
     device = torch.device(args.device)
 
-    if args.protein_id:
+    if args.all:
+        proteins = sorted(p.name for p in args.atlas_raw.iterdir() if p.is_dir())
+        print(f"Processing all {len(proteins)} proteins in one pass.", flush=True)
+    elif args.protein_id:
         proteins = [args.protein_id]
     else:
         # SLURM array mode: sorted list, indexed by SLURM_ARRAY_TASK_ID
