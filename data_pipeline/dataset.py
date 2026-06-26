@@ -24,18 +24,22 @@ class LatentDataset(Dataset):
     Directory layout expected on disk:
         <data_dir>/<protein_name>/
             manifest.json
+            pair.pt             ← static pair tensor [L, L, d_pair] float16
             shard_000000.h5
             shard_000001.h5
             ...
 
     Each shard HDF5 file contains:
-        single    float16  [N, L, d_single]   — Chai-1 single-token reps
-        pair      float16  [N, L, L, d_pair]  — Chai-1 pair-token reps
-        frame_idx int64    [N]                 — original MD frame index
+        single    float16  [N, L, d_single]  — Chai-1 single-token reps
+        frame_idx int64    [N]               — original MD frame index
+
+    pair.pt is produced by extract_pairs.py (one tensor per protein, frame 0).
+    It is loaded once into CPU RAM in __init__ and shared across all workers
+    via copy-on-write fork semantics — no per-item IO.
 
     Args:
         data_dir:     Root scratch directory containing per-protein subdirs.
-        protein_name: Subdirectory name (e.g. "1AKE").
+        protein_name: Subdirectory name (e.g. "16pk_A").
         load_pair:    If False, returns None for pair (saves IO when only single
                       is needed, e.g. during fast single-rep ablations).
     """
@@ -69,6 +73,18 @@ class LatentDataset(Dataset):
                 raise FileNotFoundError(f"Shard referenced in manifest missing: {shard_path}")
             for local_idx in range(shard_info["n_frames"]):
                 self.index_map.append((shard_path, local_idx))
+
+        # Static pair tensor — loaded once, shared across all workers via
+        # copy-on-write fork semantics. Zero per-item IO cost.
+        pair_path = protein_dir / "pair.pt"
+        if load_pair and not pair_path.exists():
+            raise FileNotFoundError(
+                f"pair.pt not found at {pair_path}. "
+                "Run extract_pairs.slurm first, or pass load_pair=False."
+            )
+        self.static_pair: torch.Tensor | None = (
+            torch.load(pair_path, weights_only=True).float() if load_pair else None
+        )
 
         # Populated lazily inside __getitem__, after DataLoader workers are
         # forked.  h5py.File objects cannot be pickled, so they must never be
@@ -107,12 +123,12 @@ class LatentDataset(Dataset):
         f0 = _get_handle(shard_path_0)
         f1 = _get_handle(shard_path_1)
 
-        single_0 = torch.from_numpy(f0["single"][local_idx_0]).float()
-        single_1 = torch.from_numpy(f1["single"][local_idx_1]).float()
-        pair = torch.from_numpy(f0["pair"][local_idx_0]).float() if self.load_pair else None
+        single_0  = torch.from_numpy(f0["single"][local_idx_0]).float()
+        single_1  = torch.from_numpy(f1["single"][local_idx_1]).float()
         frame_idx = int(f0["frame_idx"][local_idx_0])
 
-        return (single_0, single_1), pair, frame_idx
+        # Static pair: already in RAM, return directly (no HDF5 read)
+        return (single_0, single_1), self.static_pair, frame_idx
 
     def __del__(self) -> None:
         for f in self.file_handles.values():
