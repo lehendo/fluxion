@@ -12,10 +12,8 @@
 #SBATCH --output=logs/train_%j.out
 #SBATCH --error=logs/train_%j.err
 
-# Ensure logs directory exists
 mkdir -p logs
 
-# Activate cluster environment
 source ~/.bashrc
 conda activate fluxion
 
