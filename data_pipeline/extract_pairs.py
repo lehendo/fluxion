@@ -76,13 +76,16 @@ def extract_pair_for_protein(
     fasta_path = out_protein_dir / f"{protein_id}.fasta"
     _write_fasta(sequence, protein_id, fasta_path)
 
-    print(f"[{protein_id}] Building feature context (ESM on {device})...", flush=True)
-    # Load ESM on the GPU to avoid OOM-killing CPU RAM on memory-limited nodes.
+    print(f"[{protein_id}] Building feature context...", flush=True)
+    # ESM disabled: interactive SLURM jobs on this cluster have a 3.8 GB cgroup
+    # memory limit — far below ESM2's ~12 GB footprint.
+    # The swarm extract jobs (48 GB) populate the ESM cache; once that's done
+    # re-run this script with use_esm_embeddings=True to upgrade pair quality.
     from chai_lab.chai1 import make_all_atom_feature_context
     feature_context = make_all_atom_feature_context(
         fasta_file=fasta_path,
         output_dir=esm_cache,
-        use_esm_embeddings=True,
+        use_esm_embeddings=False,
         esm_device=device,
     )
     feature_context = _patch_atom_coords(feature_context, positions)
