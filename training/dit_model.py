@@ -125,9 +125,15 @@ class PairBiasedAttention(nn.Module):
         self.pair_bias_proj = nn.Linear(d_pair, n_heads, bias=False)
         self.out_proj = nn.Linear(d_model, d_model)
 
-    def forward(self, x: torch.Tensor, pair: torch.Tensor) -> torch.Tensor:
-        # x:    [B, L, d_model]
-        # pair: [B, L, L, d_pair]
+    def forward(
+        self,
+        x: torch.Tensor,
+        pair: torch.Tensor,
+        padding_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        # x:            [B, L, d_model]
+        # pair:         [B, L, L, d_pair]
+        # padding_mask: [B, L] bool, True = padded token
         B, L, _ = x.shape
 
         q, k, v = self.to_qkv(x).chunk(3, dim=-1)
@@ -137,13 +143,17 @@ class PairBiasedAttention(nn.Module):
 
         q, k, v = split_heads(q), split_heads(k), split_heads(v)
 
-        # Pair bias: [B, L, L, d_pair] → [B, L, L, n_heads] → [B, n_heads, L, L]
+        # Pair bias: [B, L, L, d_pair] → [B, n_heads, L, L]
         bias = self.pair_bias_proj(pair).permute(0, 3, 1, 2)
 
-        # SDPA routes to FlashAttention-2 / memory-efficient attention at the CUDA
-        # level — the L×L activation matrix is never materialized in HBM.
-        # Float attn_mask is added directly to the pre-softmax logits, preserving
-        # our pair-derived structural bias without blocking the fused kernel.
+        # Merge padding mask into the additive bias so padded key positions
+        # receive -inf before softmax regardless of the pair values.
+        if padding_mask is not None:
+            # [B, L] → [B, 1, 1, L]: -inf on padded keys, 0 elsewhere
+            key_mask = torch.zeros_like(padding_mask, dtype=bias.dtype)
+            key_mask = key_mask.masked_fill(padding_mask, float("-inf"))
+            bias = bias + key_mask.unsqueeze(1).unsqueeze(2)
+
         out = F.scaled_dot_product_attention(
             query=q,
             key=k,
@@ -213,15 +223,16 @@ class DiTBlock(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,      # [B, L, d_model]
-        pair: torch.Tensor,   # [B, L, L, d_pair]
-        t_emb: torch.Tensor,  # [B, d_model]
+        x: torch.Tensor,                           # [B, L, d_model]
+        pair: torch.Tensor,                        # [B, L, L, d_pair]
+        t_emb: torch.Tensor,                       # [B, d_model]
+        padding_mask: torch.Tensor | None = None,  # [B, L] bool
     ) -> torch.Tensor:
         shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = \
             self.adaLN_mod(t_emb).chunk(6, dim=-1)  # each [B, d_model]
 
         x = x + gate_msa.unsqueeze(1) * self.attn(
-            modulate(self.norm1(x), shift_msa, scale_msa), pair
+            modulate(self.norm1(x), shift_msa, scale_msa), pair, padding_mask
         )
         x = x + gate_mlp.unsqueeze(1) * self.ff(
             modulate(self.norm2(x), shift_mlp, scale_mlp)
@@ -307,23 +318,23 @@ class FluxionDiT(nn.Module):
 
     def forward(
         self,
-        z: torch.Tensor,     # [B, L, d_single]  — noisy single rep at time t
-        pair: torch.Tensor,  # [B, L, L, d_pair] — clean pair rep (structural cond.)
-        t: torch.Tensor,     # [B]               — timestep ∈ [0, 1]
+        z: torch.Tensor,                           # [B, L, d_single]
+        pair: torch.Tensor,                        # [B, L, L, d_pair]
+        t: torch.Tensor,                           # [B]
+        padding_mask: torch.Tensor | None = None,  # [B, L] bool, True = padded
     ) -> torch.Tensor:
         """
         Returns velocity field v_θ(z, pair, t): [B, L, d_single].
 
-        In conditional flow matching the straight-line interpolant gives
-            z_t = (1 - t)·z_0 + t·z_1
-        and the target velocity is  u_t = z_1 − z_0.
-        The model is trained to minimise  E[‖v_θ − u_t‖²].
+        padding_mask marks positions that are zero-padding (from batching proteins
+        of different lengths). Padded positions are masked out of attention and
+        excluded from the loss in FlowMatcher.
         """
         x = self.input_proj(z)        # [B, L, d_model]
         t_emb = self.time_embed(t)    # [B, d_model]
 
         for block in self.blocks:
-            x = block(x, pair, t_emb)
+            x = block(x, pair, t_emb, padding_mask)
 
         return self.final_layer(x, t_emb)  # [B, L, d_single]
 

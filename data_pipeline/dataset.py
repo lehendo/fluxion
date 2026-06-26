@@ -14,7 +14,8 @@ from typing import Union
 
 import h5py
 import torch
-from torch.utils.data import Dataset
+import torch.nn.functional as F
+from torch.utils.data import Dataset, ConcatDataset
 
 
 class LatentDataset(Dataset):
@@ -147,3 +148,78 @@ class LatentDataset(Dataset):
             f"frames={len(self)}, shards={len(self.shards)}, "
             f"load_pair={self.load_pair})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Multi-protein helpers
+# ---------------------------------------------------------------------------
+
+def build_multi_protein_dataset(latents_dir: Union[str, Path]) -> ConcatDataset:
+    """
+    Discover all proteins in `latents_dir` that have both manifest.json and
+    pair.pt, build a LatentDataset for each, and return a ConcatDataset.
+
+    Proteins missing either file are skipped with a warning so a partially
+    finished extraction run doesn't block training.
+    """
+    latents_dir = Path(latents_dir)
+    datasets = []
+    skipped = []
+    for protein_dir in sorted(latents_dir.iterdir()):
+        if not protein_dir.is_dir():
+            continue
+        manifest = protein_dir / "manifest.json"
+        pair     = protein_dir / "pair.pt"
+        if not manifest.exists() or not pair.exists():
+            skipped.append(protein_dir.name)
+            continue
+        datasets.append(LatentDataset(latents_dir, protein_dir.name, load_pair=True))
+
+    if skipped:
+        print(f"[dataset] Skipped {len(skipped)} proteins (missing manifest or pair.pt): "
+              f"{skipped}", flush=True)
+    if not datasets:
+        raise RuntimeError(f"No valid protein datasets found in {latents_dir}")
+
+    total_frames = sum(len(d) for d in datasets)
+    print(f"[dataset] {len(datasets)} proteins, {total_frames} total frames", flush=True)
+    return ConcatDataset(datasets)
+
+
+def collate_fn(
+    batch: list[tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, int]],
+) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Pad a mixed-length batch to the longest sequence in it.
+
+    Each sample is ((z0 [L_i, d_s], z1 [L_i, d_s]), pair [L_i, L_i, d_p], frame_idx).
+    Proteins with different sequence lengths L_i are zero-padded to L_max.
+
+    Returns:
+        (z0, z1)      float32 [B, L_max, d_s]
+        pair          float32 [B, L_max, L_max, d_p]
+        frame_idx     int64   [B]
+        padding_mask  bool    [B, L_max]  — True = padded position (ignore in loss/attn)
+    """
+    L_max = max(item[0][0].shape[0] for item in batch)
+
+    z0_list, z1_list, pair_list, mask_list, fidx_list = [], [], [], [], []
+    for (z0, z1), pair, frame_idx in batch:
+        L = z0.shape[0]
+        pad = L_max - L
+
+        z0_list.append(F.pad(z0,   (0, 0, 0, pad)))           # [L_max, d_s]
+        z1_list.append(F.pad(z1,   (0, 0, 0, pad)))
+        pair_list.append(F.pad(pair, (0, 0, 0, pad, 0, pad)))  # [L_max, L_max, d_p]
+
+        mask = torch.zeros(L_max, dtype=torch.bool)
+        mask[L:] = True
+        mask_list.append(mask)
+        fidx_list.append(frame_idx)
+
+    return (
+        (torch.stack(z0_list), torch.stack(z1_list)),
+        torch.stack(pair_list),
+        torch.tensor(fidx_list, dtype=torch.int64),
+        torch.stack(mask_list),
+    )

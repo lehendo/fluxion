@@ -33,7 +33,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
 from training.checkpoint import save_checkpoint, load_checkpoint
-from data_pipeline.dataset import LatentDataset
+from data_pipeline.dataset import build_multi_protein_dataset, collate_fn
 
 # ---------------------------------------------------------------------------
 # Global preemption flag — set by SIGUSR1 handler, checked each batch
@@ -140,7 +140,8 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # 5. Dataset + DataLoader
     # ------------------------------------------------------------------
-    dataset = LatentDataset(args.scratch_dir, args.protein_id)
+    latents_dir = Path(args.scratch_dir) / "latents"
+    dataset = build_multi_protein_dataset(latents_dir)
     sampler = DistributedSampler(dataset, shuffle=True)
     dataloader = DataLoader(
         dataset,
@@ -149,6 +150,7 @@ def main(args: argparse.Namespace) -> None:
         num_workers=4,
         pin_memory=True,
         drop_last=True,
+        collate_fn=collate_fn,
     )
 
     # ------------------------------------------------------------------
@@ -159,7 +161,7 @@ def main(args: argparse.Namespace) -> None:
     for epoch in range(start_epoch, args.epochs):
         sampler.set_epoch(epoch)
 
-        for (z0, z1), pair, _frame_idx in dataloader:
+        for (z0, z1), pair, _frame_idx, padding_mask in dataloader:
 
             # Preemption check — save on rank 0, then all ranks exit cleanly
             if PREEMPTION_REQUESTED:
@@ -173,14 +175,15 @@ def main(args: argparse.Namespace) -> None:
                 dist.destroy_process_group()
                 sys.exit(0)
 
-            z0   = z0.to(device,   non_blocking=True)
-            z1   = z1.to(device,   non_blocking=True)
-            pair = pair.to(device, non_blocking=True)
+            z0           = z0.to(device,           non_blocking=True)
+            z1           = z1.to(device,           non_blocking=True)
+            pair         = pair.to(device,         non_blocking=True)
+            padding_mask = padding_mask.to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
 
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                loss = matcher.compute_loss(model, z0, z1, pair)
+                loss = matcher.compute_loss(model, z0, z1, pair, padding_mask)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -210,7 +213,6 @@ def main(args: argparse.Namespace) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--scratch-dir",    type=str,   required=True)
-    parser.add_argument("--protein-id",     type=str,   required=True)
     parser.add_argument("--batch-size",     type=int,   default=8)
     parser.add_argument("--lr",             type=float, default=1e-4)
     parser.add_argument("--weight-decay",   type=float, default=1e-5)

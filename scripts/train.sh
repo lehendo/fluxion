@@ -40,7 +40,6 @@ srun torchrun \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
     training/train.py \
     --scratch-dir /scratch/arjunc4/fluxion_data \
-    --protein-id 1AKE \
     --batch-size 8 \
     --lr 1e-4 \
     --epochs 200 \
