@@ -32,13 +32,24 @@ import MDAnalysis as mda
 
 # Reuse the Chai-1 pipeline helpers from extract_latents
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from chai_lab.chai1 import load_exported
 from data_pipeline.extract_latents import (
     _get_sequence,
     _write_fasta,
-    _build_feature_context,
     _patch_atom_coords,
     run_trunk_pipeline,
 )
+
+
+def load_chai1_modules(device: torch.device) -> dict:
+    """Load Chai-1 TorchScript modules once — reused across all proteins."""
+    print("Loading Chai-1 compiled modules...", flush=True)
+    return {
+        "feature_embedding":    load_exported("feature_embedding.pt",    device),
+        "bond_loss_input_proj": load_exported("bond_loss_input_proj.pt", device),
+        "token_embedder":       load_exported("token_embedder.pt",       device),
+        "trunk":                load_exported("trunk.pt",                device),
+    }
 
 
 def extract_pair_for_protein(
@@ -46,6 +57,7 @@ def extract_pair_for_protein(
     atlas_raw: Path,
     out_dir: Path,
     device: torch.device,
+    loaded_modules: dict,
 ) -> None:
     protein_dir = atlas_raw / protein_id
     out_protein_dir = out_dir / protein_id
@@ -92,7 +104,7 @@ def extract_pair_for_protein(
 
     print(f"[{protein_id}] Running Chai-1 trunk...", flush=True)
     with torch.no_grad():
-        _single, pair = run_trunk_pipeline(feature_context, device=device)
+        _single, pair = run_trunk_pipeline(feature_context, loaded_modules, device=device)
 
     # pair: [L, L, d_pair] — save as float16 to halve disk use
     pair_cpu = pair.squeeze(0).cpu().to(torch.float16)
@@ -131,8 +143,10 @@ def main() -> None:
             return
         proteins = [proteins[task_id]]
 
+    loaded_modules = load_chai1_modules(device)
+
     for protein_id in proteins:
-        extract_pair_for_protein(protein_id, args.atlas_raw, args.out_dir, device)
+        extract_pair_for_protein(protein_id, args.atlas_raw, args.out_dir, device, loaded_modules)
 
 
 if __name__ == "__main__":
