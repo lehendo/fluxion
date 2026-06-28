@@ -331,9 +331,11 @@ def write_shard(
     pairs:   List[torch.Tensor],
     frame_indices: List[int],
     skip_pair: bool,
+    shard_prefix: str = "",
 ) -> Path:
     protein_dir.mkdir(parents=True, exist_ok=True)
-    path = protein_dir / f"shard_{shard_idx:06d}.h5"
+    prefix = f"{shard_prefix}_" if shard_prefix else ""
+    path = protein_dir / f"{prefix}shard_{shard_idx:06d}.h5"
 
     single_arr: np.ndarray = torch.stack(singles).numpy()
     idx_arr:    np.ndarray = np.array(frame_indices, dtype=np.int32)
@@ -389,8 +391,8 @@ def frames_already_done(out_dir: Path, protein: str) -> int:
 def shards_already_done(out_dir: Path, protein: str) -> int:
     return len(read_manifest(out_dir).get(protein, {}).get("shards", []))
 
-def _flush_shard(protein_dir: Path, out_dir: Path, protein: str, shard_idx: int, singles: List[torch.Tensor], pairs: List[torch.Tensor], frame_indices: List[int], skip_pair: bool) -> None:
-    path = write_shard(protein_dir, shard_idx, singles, pairs, frame_indices, skip_pair)
+def _flush_shard(protein_dir: Path, out_dir: Path, protein: str, shard_idx: int, singles: List[torch.Tensor], pairs: List[torch.Tensor], frame_indices: List[int], skip_pair: bool, shard_prefix: str = "") -> None:
+    path = write_shard(protein_dir, shard_idx, singles, pairs, frame_indices, skip_pair, shard_prefix=shard_prefix)
     update_manifest(out_dir, protein, path, n_frames=len(singles), first_idx=frame_indices[0], last_idx=frame_indices[-1])
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -412,16 +414,18 @@ def extract(args: argparse.Namespace) -> None:
 
     if args.fasta:
         protein = Path(args.fasta).stem
+        shard_prefix = args.shard_prefix if args.shard_prefix else ""
         log.info("FASTA mode: encoding single sequence for %s", protein)
         context = _build_feature_context(Path(args.fasta), esm_cache_dir)
         single, pair = run_trunk_pipeline(context, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
         protein_dir = out_dir / protein
-        _flush_shard(protein_dir, out_dir, protein, 0, singles=[single.half()], pairs=[] if args.skip_pair else [pair.half()], frame_indices=[0], skip_pair=args.skip_pair)
+        _flush_shard(protein_dir, out_dir, protein, 0, singles=[single.half()], pairs=[] if args.skip_pair else [pair.half()], frame_indices=[0], skip_pair=args.skip_pair, shard_prefix=shard_prefix)
         log.info("Done: single %s  pair %s", tuple(single.shape), tuple(pair.shape))
         return
 
     protein = Path(args.pdb).stem
-    log.info("MD mode: protein=%s  device=%s  recycles=%d  skip_pair=%s", protein, device, args.num_trunk_recycles, args.skip_pair)
+    shard_prefix = args.shard_prefix if args.shard_prefix else ""
+    log.info("MD mode: protein=%s  device=%s  recycles=%d  skip_pair=%s  shard_prefix=%r", protein, device, args.num_trunk_recycles, args.skip_pair, shard_prefix)
 
     u       = mda.Universe(args.pdb, args.traj)
     n_total = len(u.trajectory)
@@ -472,7 +476,7 @@ def extract(args: argparse.Namespace) -> None:
         frames_done += 1
 
         if len(singles_buf) >= args.shard_size:
-            _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair)
+            _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair, shard_prefix=shard_prefix)
             shard_idx += 1
             singles_buf.clear(); pairs_buf.clear(); frame_idx_buf.clear()
 
@@ -480,7 +484,7 @@ def extract(args: argparse.Namespace) -> None:
         pbar.set_postfix(fps=f"{fps:.1f}", shard=shard_idx, d_s=d_s, d_p=d_p)
 
     if singles_buf:
-        _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair)
+        _flush_shard(protein_dir, out_dir, protein, shard_idx, singles_buf, pairs_buf, frame_idx_buf, args.skip_pair, shard_prefix=shard_prefix)
 
     elapsed = time.perf_counter() - t0
     log.info("Extraction complete: %d frames in %.1fs (%.2f fps), %d shards.", frames_done, elapsed, frames_done / max(elapsed, 1e-9), shard_idx + 1)
@@ -492,6 +496,9 @@ def parse_args() -> argparse.Namespace:
     src.add_argument("--fasta", help="FASTA file.")
     p.add_argument("--traj", help="Trajectory file (.xtc or .dcd — MDAnalysis autodetects).")
     p.add_argument("--out-dir", required=True)
+    p.add_argument("--shard-prefix", default=None,
+                   help="Prefix for shard filenames. Defaults to protein name. "
+                        "Set to e.g. '16pk_A_R1' per replica to avoid concurrent write collisions.")
     p.add_argument("--shard-size", type=int, default=1000)
     p.add_argument("--device", default="cuda")
     p.add_argument("--num-trunk-recycles", type=int, default=3)

@@ -162,6 +162,9 @@ class PairBiasedAttention(nn.Module):
             dropout_p=0.0,
             is_causal=False,
         )
+        # When every key in a row is masked the softmax is 0/0 → NaN.
+        # Replace with zero: a fully-masked query attends to nothing.
+        out = torch.nan_to_num(out, nan=0.0)
 
         out = out.transpose(1, 2).contiguous().view(B, L, -1)  # [B, L, d_model]
         return self.out_proj(out)

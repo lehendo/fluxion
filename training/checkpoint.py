@@ -73,7 +73,9 @@ def load_checkpoint(
     if not path.exists():
         return 0, 0
 
-    state = torch.load(path, map_location="cpu")
+    # weights_only=False required: checkpoint includes numpy/python RNG states
+    # which are not plain tensors and cannot be loaded with weights_only=True.
+    state = torch.load(path, map_location="cpu", weights_only=False)
 
     model_without_ddp.load_state_dict(state["model"])
     ema_model.load_state_dict(state["ema"])

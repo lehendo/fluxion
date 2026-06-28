@@ -51,9 +51,9 @@ class FlowMatcher:
 
         if padding_mask is not None:
             # Zero out padded positions; average only over valid tokens per sample.
-            valid = (~padding_mask).float().unsqueeze(-1)   # [B, L, 1]
-            n_valid = valid.sum(dim=1)                       # [B, 1]
-            loss = (loss * valid).sum(dim=(1, 2)) / (n_valid.squeeze(-1) * loss.shape[-1])
+            valid   = (~padding_mask).float().unsqueeze(-1)          # [B, L, 1]
+            n_valid = valid.sum(dim=1).clamp(min=1.0)                # [B, 1] — clamp avoids 0/0
+            loss    = (loss * valid).sum(dim=(1, 2)) / (n_valid.squeeze(-1) * loss.shape[-1])
             return loss.mean()
 
         return loss.mean(dim=(1, 2)).mean()

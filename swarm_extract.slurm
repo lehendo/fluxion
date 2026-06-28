@@ -44,11 +44,10 @@ echo "Worker $SLURM_ARRAY_TASK_ID: $PROTEIN_ID replica $REPLICA"
 echo "  PDB: $PDB"
 echo "  XTC: $XTC"
 
-# All 3 replicas write into the same protein directory.
-# The filelock-protected manifest handles concurrent workers safely.
 python data_pipeline/extract_latents.py \
-    --pdb     "$PDB"                \
-    --traj    "$XTC"                \
-    --out-dir "$OUT_DIR/$PROTEIN_ID" \
-    --shard-size 500                \
+    --pdb          "$PDB"                     \
+    --traj         "$XTC"                     \
+    --out-dir      "$OUT_DIR/$PROTEIN_ID"     \
+    --shard-prefix "${PROTEIN_ID}_R${REPLICA}" \
+    --shard-size   500                        \
     --skip-pair

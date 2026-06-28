@@ -267,8 +267,7 @@ def load_z0_from_latents(
 
     # Walk shards to find the requested frame
     frames_seen = 0
-    for shard_info in manifest["shards"]:
-        shard_path = protein_dir / shard_info["path"]
+    for shard_info in manifest[protein_id]["shards"]:
         n = shard_info["n_frames"]
         if frames_seen + n > frame_idx:
             local_idx = frame_idx - frames_seen

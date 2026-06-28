@@ -63,7 +63,13 @@ class LatentDataset(Dataset):
         with open(manifest_path) as f:
             manifest = json.load(f)
 
-        self.shards: list[dict] = manifest["shards"]
+        # Deduplicate by path — concurrent replica jobs can write the same shard
+        # filename and produce duplicate manifest entries for identical files.
+        seen: set[str] = set()
+        self.shards: list[dict] = [
+            s for s in manifest[protein_name]["shards"]
+            if not (s["path"] in seen or seen.add(s["path"]))  # type: ignore[func-returns-value]
+        ]
 
         # Flat index: list of (shard_path, local_frame_index)
         # Built once in __init__; workers read from it without re-loading json.
@@ -132,7 +138,7 @@ class LatentDataset(Dataset):
         return (single_0, single_1), self.static_pair, frame_idx
 
     def __del__(self) -> None:
-        for f in self.file_handles.values():
+        for f in getattr(self, "file_handles", {}).values():
             try:
                 f.close()
             except Exception:
