@@ -7,7 +7,7 @@
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:A100:1
+#SBATCH --gres=gpu:H100:1
 #SBATCH --mem=48G
 #SBATCH --array=0-56   # 19 proteins × 3 replicas (1bcp_F unavailable)
 
