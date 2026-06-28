@@ -4,48 +4,50 @@ inference/visualize.py
 Decode a FluxionDiT rollout trajectory (latent space) back to 3D coordinates
 and produce MD-compatible output.
 
-Two decoding strategies:
-  1. Nearest-neighbor (fast):  for each predicted latent, find the closest
-     frame in the MD-derived latent store and return those coordinates.
-     Useful for evaluation (does the rollout trace known conformations?) and
-     for quick visualization without re-running Chai-1.
+Two decoding strategies
+-----------------------
+1. Nearest-neighbor (nn):  for each predicted latent, find the closest frame
+   in the MD-derived latent store and return those Cα coordinates.  No GPU
+   required for decoding; runs in seconds.  Useful for evaluation (does the
+   rollout trace known conformations?) and quick visualization.
 
-  2. Chai-1 structure module (proper): run Chai-1's coordinate diffusion
-     conditioned on the predicted single representation. Requires ~40 GB GPU
-     memory and runs the full structure module forward pass. Produces genuine
-     3D structure predictions.
+2. Chai-1 structure module (chai1):  inject the predicted single representation
+   into Chai-1's diffusion decoder to produce genuine 3D coordinates.
+   Requires ~40 GB GPU memory and ~2–4 s/step.
 
-Usage (nearest-neighbor decode):
-    python inference/visualize.py \\
-        --rollout     rollout_16pk_A.pt \\
-        --latents-dir /scratch/arjunc4/fluxion_data/latents \\
-        --atlas-raw   /scratch/arjunc4/atlas_raw \\
-        --protein-id  16pk_A \\
-        --out-dir     vis_16pk_A \\
-        --mode        nn
+Usage
+-----
+# Nearest-neighbor:
+python inference/visualize.py \\
+    --rollout     rollout_16pk_A.pt \\
+    --latents-dir /scratch/arjunc4/fluxion_data/latents \\
+    --atlas-raw   /scratch/arjunc4/atlas_raw \\
+    --protein-id  16pk_A \\
+    --out-dir     vis_16pk_A
 
-Usage (Chai-1 decode — requires 48 GB GPU):
-    python inference/visualize.py \\
-        --rollout     rollout_16pk_A.pt \\
-        --latents-dir /scratch/arjunc4/fluxion_data/latents \\
-        --atlas-raw   /scratch/arjunc4/atlas_raw \\
-        --protein-id  16pk_A \\
-        --out-dir     vis_16pk_A \\
-        --mode        chai1
+# Chai-1 decode (needs 48 GB GPU):
+python inference/visualize.py \\
+    --rollout     rollout_16pk_A.pt \\
+    --latents-dir /scratch/arjunc4/fluxion_data/latents \\
+    --atlas-raw   /scratch/arjunc4/atlas_raw \\
+    --protein-id  16pk_A \\
+    --out-dir     vis_16pk_A \\
+    --mode        chai1 \\
+    --device      cuda
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import h5py
 import numpy as np
 import torch
-import MDAnalysis as mda
-from MDAnalysis.analysis import rms
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -54,27 +56,51 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Latent store helpers
 # ---------------------------------------------------------------------------
 
-def load_all_latents(latents_dir: Path, protein_id: str) -> tuple[torch.Tensor, list[int]]:
+def load_all_latents(
+    latents_dir: Path,
+    protein_id: str,
+) -> tuple[torch.Tensor, list[int], list[int]]:
     """
-    Load all single-token latents for a protein from HDF5 shards.
+    Load all single-token latents from every shard for a protein.
+
+    Deduplicates shard entries (defensive against old concurrency bug) and
+    parses the replica number from shard filenames of the form
+    ``<protein>_R<N>_shard_<idx>.h5``.
 
     Returns:
-        latents:     [N, L, d_single] float32  — all MD-derived latents
-        frame_idxs:  list of N original MD frame indices
+        latents:     float32 [N, L, d_single]
+        frame_idxs:  [N] — original MD frame index within the replica's trajectory
+        replica_ids: [N] — which ATLAS replica (1/2/3) each frame came from
     """
     protein_dir = latents_dir / protein_id
     with open(protein_dir / "manifest.json") as f:
         manifest = json.load(f)
 
-    all_singles = []
-    all_frame_idxs = []
-    for shard_info in manifest["shards"]:
+    # Deduplicate by path (same logic as dataset.py)
+    seen: set[str] = set()
+    unique_shards = [
+        s for s in manifest[protein_id]["shards"]
+        if not (s["path"] in seen or seen.add(s["path"]))  # type: ignore[func-returns-value]
+    ]
+
+    all_singles: list[torch.Tensor] = []
+    all_frame_idxs: list[int] = []
+    all_replica_ids: list[int] = []
+
+    for shard_info in unique_shards:
         shard_path = protein_dir / shard_info["path"]
+        # Parse replica: "16pk_A_R2_shard_000003.h5" → 2
+        m = re.search(r"_R(\d+)_", shard_path.name)
+        replica = int(m.group(1)) if m else 1
+
         with h5py.File(shard_path, "r") as hf:
             all_singles.append(torch.from_numpy(np.array(hf["single"])).float())
-            all_frame_idxs.extend(hf["frame_idx"][:].tolist())
+            frames = hf["frame_idx"][:].tolist()
+            all_frame_idxs.extend(frames)
+            all_replica_ids.extend([replica] * len(frames))
 
-    return torch.cat(all_singles, dim=0), all_frame_idxs
+    latents = torch.cat(all_singles, dim=0)  # [N, L, d_single]
+    return latents, all_frame_idxs, all_replica_ids
 
 
 # ---------------------------------------------------------------------------
@@ -82,44 +108,46 @@ def load_all_latents(latents_dir: Path, protein_id: str) -> tuple[torch.Tensor, 
 # ---------------------------------------------------------------------------
 
 def nn_decode(
-    trajectory: torch.Tensor,    # [T, L, d_single]
-    latents: torch.Tensor,        # [N, L, d_single] — training set
-    frame_idxs: list[int],        # [N] — corresponding MD frame indices
+    trajectory: torch.Tensor,   # [T, L, d_single]
+    latents: torch.Tensor,       # [N, L, d_single]
+    frame_idxs: list[int],
+    replica_ids: list[int],
     batch_size: int = 64,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    For each latent in the rollout trajectory, find the nearest neighbor in
-    the training set (Frobenius distance over [L, d_single]).
+    For each rollout latent, find the nearest neighbor in the training set
+    (Frobenius / flattened-L2 distance over [L, d_single]).
 
     Returns:
-        nn_frames:    [T] int — MD frame index of nearest neighbor
-        nn_distances: [T] float — mean per-token L2 distance
+        nn_frames:    int64 [T]   — MD frame index of nearest neighbor
+        nn_replicas:  int64 [T]   — ATLAS replica of nearest neighbor
+        nn_distances: float32 [T] — L2 distance to nearest neighbor
     """
     T = trajectory.shape[0]
     N = latents.shape[0]
 
-    # Flatten [*, L, d] → [*, L*d] for distance computation
-    traj_flat = trajectory.view(T, -1)       # [T, L*d]
-    lat_flat  = latents.view(N, -1).float()  # [N, L*d]
+    traj_flat = trajectory.view(T, -1).float()   # [T, L*d]
+    lat_flat  = latents.view(N, -1).float()      # [N, L*d]
 
     nn_indices   = np.empty(T, dtype=np.int64)
     nn_distances = np.empty(T, dtype=np.float32)
 
     for start in range(0, T, batch_size):
-        end = min(start + batch_size, T)
-        traj_chunk = traj_flat[start:end]          # [B, L*d]
-        # Euclidean distances via ||a-b||^2 = ||a||^2 + ||b||^2 - 2<a,b>
+        end   = min(start + batch_size, T)
+        chunk = traj_flat[start:end]              # [B, L*d]
+        # ||a - b||^2 = ||a||^2 + ||b||^2 - 2<a,b>
         d2 = (
-            (traj_chunk ** 2).sum(dim=1, keepdim=True)   # [B, 1]
-            + (lat_flat ** 2).sum(dim=1).unsqueeze(0)    # [1, N]
-            - 2 * traj_chunk @ lat_flat.T                # [B, N]
-        ).clamp(min=0)
-        best = d2.argmin(dim=1)                           # [B]
+            (chunk ** 2).sum(dim=1, keepdim=True)
+            + (lat_flat ** 2).sum(dim=1).unsqueeze(0)
+            - 2 * chunk @ lat_flat.T
+        ).clamp(min=0.0)
+        best = d2.argmin(dim=1)
         nn_indices[start:end]   = best.numpy()
         nn_distances[start:end] = d2[torch.arange(end - start), best].sqrt().numpy()
 
-    nn_frames = np.array([frame_idxs[i] for i in nn_indices], dtype=np.int64)
-    return nn_frames, nn_distances
+    nn_frames   = np.array([frame_idxs[i]  for i in nn_indices], dtype=np.int64)
+    nn_replicas = np.array([replica_ids[i] for i in nn_indices], dtype=np.int64)
+    return nn_frames, nn_replicas, nn_distances
 
 
 # ---------------------------------------------------------------------------
@@ -129,26 +157,36 @@ def nn_decode(
 def extract_ca_trajectory(
     atlas_raw: Path,
     protein_id: str,
-    frame_indices: np.ndarray,
-    replica: int = 1,
+    frame_indices: np.ndarray,   # [T] — frame within each replica's trajectory
+    replica_ids: np.ndarray,     # [T] — which replica to open
 ) -> np.ndarray:
     """
-    Extract Cα coordinates for the given frame indices from an MD trajectory.
+    Extract Cα coordinates for each (frame_idx, replica) pair.
+
+    Caches open MDAnalysis Universe objects so each XTC file is opened at
+    most once regardless of how many frames are drawn from it.
 
     Returns:
-        coords: [T, n_ca, 3] float32 — Angstroms
+        coords: float32 [T, n_ca, 3] — Angstroms
     """
+    import MDAnalysis as mda  # cluster-only dependency; import lazily
+
     protein_dir = atlas_raw / protein_id
-    pdb_path = protein_dir / f"{protein_id}.pdb"
-    xtc_path = protein_dir / f"{protein_id}_prod_R{replica}_fit.xtc"
+    pdb_path    = protein_dir / f"{protein_id}.pdb"
 
-    u = mda.Universe(str(pdb_path), str(xtc_path))
-    ca_sel = u.select_atoms("name CA")
+    universes: dict[int, mda.Universe] = {}
 
-    coords = []
-    for frame_idx in frame_indices:
-        u.trajectory[frame_idx]
-        coords.append(ca_sel.positions.copy())
+    def _get_universe(replica: int) -> mda.Universe:
+        if replica not in universes:
+            xtc = protein_dir / f"{protein_id}_prod_R{replica}_fit.xtc"
+            universes[replica] = mda.Universe(str(pdb_path), str(xtc))
+        return universes[replica]
+
+    coords: list[np.ndarray] = []
+    for frame_idx, replica in zip(frame_indices.tolist(), replica_ids.tolist()):
+        u = _get_universe(int(replica))
+        u.trajectory[int(frame_idx)]
+        coords.append(u.select_atoms("name CA").positions.copy())
 
     return np.stack(coords, axis=0).astype(np.float32)  # [T, n_ca, 3]
 
@@ -162,153 +200,241 @@ def chai1_decode(
     pair: torch.Tensor,          # [L, L, d_pair]
     fasta_path: Path,
     device: torch.device,
-    n_diffusion_samples: int = 1,
 ) -> np.ndarray:
     """
-    Decode each latent in the rollout trajectory to 3D coordinates using
-    Chai-1's structure module.
+    Decode each rollout latent to 3D atom coordinates via Chai-1's
+    diffusion-based structure module.
 
-    This loads all four Chai-1 compiled modules and runs the full decoding
-    pipeline for each step.  Expect ~2-4 s/step on an A100.
+    Strategy
+    --------
+    Build the full Chai-1 feature context from the protein FASTA (reusing the
+    ESM cache written during latent extraction), then substitute the FluxionDiT
+    single representation in place of Chai-1's trunk output before calling the
+    structure module.  The pair representation from pair.pt is used as-is.
 
     Returns:
-        coords: [T, L, 3] float32 — predicted Cα positions in Angstroms
+        coords: float32 [T, n_atoms, 3] — predicted all-atom positions (Å)
     """
     try:
-        from chai_lab.chai1 import load_exported, run_inference
-        from chai_lab.chai1 import make_all_atom_feature_context
+        from chai_lab.chai1 import (  # type: ignore[import]
+            load_exported,
+            make_all_atom_feature_context,
+            feature_factory,
+        )
+        from chai_lab.data.collate.collate import Collate          # type: ignore[import]
+        from chai_lab.model.utils import move_data_to_device       # type: ignore[import]
+        from chai_lab.utils.tensor_utils import und_self           # type: ignore[import]
     except ImportError as exc:
-        raise ImportError("chai-lab is not installed or not on sys.path.") from exc
+        raise ImportError(
+            "chai-lab is not installed or not importable. "
+            "Activate the fluxion conda environment."
+        ) from exc
 
-    T = trajectory.shape[0]
+    # Load structure module compiled weights
+    try:
+        structure_module = load_exported("structure_module.pt", device)
+    except Exception as exc:
+        raise RuntimeError(
+            "Could not load structure_module.pt.  "
+            "Ensure CHAI_WEIGHTS_DIR contains the full Chai-1 weight set "
+            "including structure_module.pt."
+        ) from exc
+
+    # Build feature context — reuses ESM cache from extraction
+    esm_cache = fasta_path.parent / "esm_cache"
+    feature_context = make_all_atom_feature_context(
+        fasta_file=fasta_path,
+        output_dir=esm_cache,
+        use_esm_embeddings=True,
+        esm_device=torch.device("cpu"),
+    )
+
+    # Collate to get atom-level conditioning tensors
+    collator = Collate(
+        feature_factory=feature_factory,
+        num_key_atoms=128,
+        num_query_atoms=32,
+    )
+    batch  = collator([feature_context])
+    batch  = move_data_to_device(batch, device=device)
+    inputs = batch["inputs"]
+
+    atom_single_mask   = inputs["atom_exists_mask"]          # [1, n_atoms]
+    atom_token_indices = inputs["atom_token_index"].long()   # [1, n_atoms]
+
+    T          = trajectory.shape[0]
     all_coords = []
 
-    print(f"Decoding {T} frames via Chai-1 structure module ...", flush=True)
+    pair_b = pair.unsqueeze(0).to(device).bfloat16()   # [1, L, L, d_p], fixed
+
     for step_idx in range(T):
-        if step_idx % 10 == 0:
-            print(f"  step {step_idx}/{T}", flush=True)
+        if step_idx % 20 == 0:
+            print(f"  Chai-1 decode: {step_idx}/{T}", flush=True)
 
-        single = trajectory[step_idx].unsqueeze(0).to(device)  # [1, L, d]
-        pair_b = pair.unsqueeze(0).to(device)                   # [1, L, L, d]
+        single_b = trajectory[step_idx].unsqueeze(0).to(device).bfloat16()  # [1, L, d_s]
 
-        # Chai-1's structure module expects the single + pair outputs from the
-        # trunk and runs an EDM diffusion process to sample coordinates.
-        # The exact API depends on the chai-lab version installed; this calls
-        # the run_inference helper which wraps the structure module sampling.
-        try:
-            from chai_lab.chai1 import _decode_structure  # type: ignore[attr-defined]
-            xyz = _decode_structure(single, pair_b, fasta_path, device=device)
-        except (ImportError, AttributeError):
-            # Fallback: alert the user that this path requires deeper chai-lab integration
-            raise NotImplementedError(
-                "Chai-1 structure decoding is not yet wired up for this chai-lab version.\n"
-                "Use --mode nn for nearest-neighbor decoding instead.\n"
-                "To implement proper decoding, hook into chai_lab internals:\n"
-                "  from chai_lab.model.diffusion.conditioning import DiffusionConditioning\n"
-                "  from chai_lab.model.diffusion.model import DiffusionModule"
+        with torch.no_grad():
+            out = structure_module(
+                token_single_trunk_repr=single_b,
+                token_pair_trunk_repr=pair_b,
+                atom_single_mask=atom_single_mask,
+                atom_token_indices=atom_token_indices,
             )
 
-        # xyz: [1, L, 3]
-        all_coords.append(xyz.squeeze(0).cpu().numpy())
+        # Extract coordinate tensor from output (exact field depends on chai-lab version)
+        if isinstance(out, torch.Tensor):
+            xyz = out
+        elif hasattr(out, "coords"):
+            xyz = out.coords
+        elif isinstance(out, (tuple, list)):
+            xyz = out[0]
+        else:
+            raise ValueError(
+                f"Unexpected structure_module output type: {type(out)}. "
+                "Inspect the module and update this extractor."
+            )
 
-    return np.stack(all_coords, axis=0).astype(np.float32)  # [T, L, 3]
+        all_coords.append(xyz.squeeze(0).float().cpu().numpy())
+
+    return np.stack(all_coords, axis=0).astype(np.float32)  # [T, n_atoms, 3]
 
 
 # ---------------------------------------------------------------------------
 # RMSD evaluation
 # ---------------------------------------------------------------------------
 
+def _kabsch_rmsd(mobile: np.ndarray, ref: np.ndarray) -> float:
+    """
+    Kabsch-aligned RMSD between two point clouds (pure numpy, no MDAnalysis).
+
+    Args:
+        mobile: [N, 3] — coordinates to rotate
+        ref:    [N, 3] — reference coordinates
+    Returns:
+        RMSD in the same units as the input coordinates.
+    """
+    mc = mobile - mobile.mean(0)
+    rc = ref    - ref.mean(0)
+    H  = mc.T @ rc
+    U, _, Vt = np.linalg.svd(H)
+    d  = np.sign(np.linalg.det(Vt.T @ U.T))
+    R  = Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+    rotated = mc @ R.T
+    return float(np.sqrt(((rotated - rc) ** 2).sum(-1).mean()))
+
+
 def compute_pairwise_rmsds(
-    coords: np.ndarray,  # [T, n_ca, 3]
+    coords: np.ndarray,   # [T, n_ca, 3]
     ref_idx: int = 0,
 ) -> np.ndarray:
-    """RMSD of each frame against the reference frame (after Kabsch alignment)."""
-    from MDAnalysis.analysis.rms import rmsd as mda_rmsd
-
+    """Kabsch-aligned Cα RMSD of each frame against the reference frame."""
     ref = coords[ref_idx]
-    rmsds = np.array([
-        mda_rmsd(coords[i], ref, superposition=True)
-        for i in range(len(coords))
-    ])
-    return rmsds
+    return np.array(
+        [_kabsch_rmsd(coords[i], ref) for i in range(len(coords))],
+        dtype=np.float32,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Trajectory writing (MDAnalysis)
+# Trajectory writers
 # ---------------------------------------------------------------------------
 
-def write_trajectory(
-    coords: np.ndarray,  # [T, n_atoms, 3]
+def write_pdb_trajectory(
+    coords: np.ndarray,   # [T, n_atoms, 3]
     pdb_template: Path,
     out_pdb: Path,
     selection: str = "name CA",
 ) -> None:
-    """
-    Write decoded trajectory as a multi-frame PDB using the input structure
-    as topology template.
-    """
-    u = mda.Universe(str(pdb_template))
+    """Write a multi-frame PDB from [T, n_atoms, 3] Cα coordinates."""
+    import MDAnalysis as mda  # cluster-only dependency; import lazily
+    u   = mda.Universe(str(pdb_template))
     sel = u.select_atoms(selection)
-
     if coords.shape[1] != len(sel):
         raise ValueError(
-            f"Coordinate frames have {coords.shape[1]} atoms but "
-            f"selection '{selection}' has {len(sel)} atoms."
+            f"coords have {coords.shape[1]} atoms but '{selection}' "
+            f"selects {len(sel)} atoms from {pdb_template.name}"
         )
-
+    out_pdb.parent.mkdir(parents=True, exist_ok=True)
     with mda.Writer(str(out_pdb), sel.n_atoms) as writer:
         for frame_coords in coords:
             sel.positions = frame_coords
             writer.write(sel)
-
     print(f"Wrote {len(coords)}-frame PDB → {out_pdb}", flush=True)
 
 
+def write_xtc_trajectory(
+    coords: np.ndarray,   # [T, n_atoms, 3]
+    pdb_template: Path,
+    out_xtc: Path,
+    selection: str = "name CA",
+) -> None:
+    """Write a multi-frame XTC from [T, n_atoms, 3] Cα coordinates."""
+    import MDAnalysis as mda  # cluster-only dependency; import lazily
+    u   = mda.Universe(str(pdb_template))
+    sel = u.select_atoms(selection)
+    if coords.shape[1] != len(sel):
+        raise ValueError(
+            f"coords have {coords.shape[1]} atoms but '{selection}' "
+            f"selects {len(sel)} atoms from {pdb_template.name}"
+        )
+    out_xtc.parent.mkdir(parents=True, exist_ok=True)
+    with mda.Writer(str(out_xtc), sel.n_atoms) as writer:
+        for frame_coords in coords:
+            sel.positions = frame_coords
+            writer.write(sel)
+    print(f"Wrote {len(coords)}-frame XTC → {out_xtc}", flush=True)
+
+
 # ---------------------------------------------------------------------------
-# Matplotlib plot
+# Summary plot
 # ---------------------------------------------------------------------------
 
 def plot_nn_summary(
     nn_frames: np.ndarray,
+    nn_replicas: np.ndarray,
     nn_distances: np.ndarray,
-    rmsds: np.ndarray | None,
+    rmsds: Optional[np.ndarray],
     out_dir: Path,
     protein_id: str,
 ) -> None:
-    """Summary plot: NN frame index and NN distance along the rollout."""
+    """Four-panel summary plot saved as PNG."""
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        print("matplotlib not installed, skipping plot.", flush=True)
+        print("matplotlib not installed — skipping plot.", flush=True)
         return
 
-    T = len(nn_frames)
-    t_axis = np.linspace(0, 1, T)
+    T      = len(nn_frames)
+    t_axis = np.linspace(0.0, 1.0, T)
+    n_panels = 4 if rmsds is not None else 3
 
-    n_panels = 3 if rmsds is not None else 2
-    fig, axes = plt.subplots(n_panels, 1, figsize=(8, 3 * n_panels), sharex=True)
+    fig, axes = plt.subplots(n_panels, 1, figsize=(10, 3 * n_panels), sharex=True)
 
-    axes[0].plot(t_axis, nn_frames)
+    axes[0].plot(t_axis, nn_frames, lw=0.8)
     axes[0].set_ylabel("NN frame index")
-    axes[0].set_title(f"{protein_id} — Fluxion rollout nearest-neighbor analysis")
+    axes[0].set_title(f"{protein_id} — Fluxion rollout analysis")
 
-    axes[1].plot(t_axis, nn_distances)
-    axes[1].set_ylabel("NN distance (L2)")
+    axes[1].scatter(t_axis, nn_replicas, s=2, alpha=0.4)
+    axes[1].set_ylabel("ATLAS replica")
+    axes[1].set_yticks(sorted(set(nn_replicas.tolist())))
+
+    axes[2].plot(t_axis, nn_distances, lw=0.8, color="tab:orange")
+    axes[2].set_ylabel("NN distance (L2)")
 
     if rmsds is not None:
-        axes[2].plot(t_axis, rmsds)
-        axes[2].set_ylabel("RMSD to t=0 (Å)")
-        axes[2].set_xlabel("t")
+        axes[3].plot(t_axis, rmsds, lw=0.8, color="tab:green")
+        axes[3].set_ylabel("Cα RMSD to t=0 (Å)")
+        axes[3].set_xlabel("t")
     else:
-        axes[1].set_xlabel("t")
+        axes[2].set_xlabel("t")
 
     plt.tight_layout()
     out_path = out_dir / f"{protein_id}_rollout_summary.png"
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
-    print(f"Saved plot → {out_path}", flush=True)
+    print(f"Saved summary plot → {out_path}", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -316,88 +442,92 @@ def plot_nn_summary(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Decode FluxionDiT rollout to 3D")
-    parser.add_argument("--rollout",      required=True, type=Path,
-                        help=".pt file from rollout.py")
-    parser.add_argument("--latents-dir",  required=True, type=Path)
-    parser.add_argument("--atlas-raw",    required=True, type=Path)
-    parser.add_argument("--protein-id",   required=True)
-    parser.add_argument("--out-dir",      required=True, type=Path)
-    parser.add_argument("--mode",         default="nn",
-                        choices=["nn", "chai1"],
-                        help="Decoding strategy (default: nn)")
-    parser.add_argument("--replica",      default=1, type=int,
-                        help="ATLAS replica to use for coordinate extraction (default 1)")
-    parser.add_argument("--device",       default="cuda")
+    parser = argparse.ArgumentParser(
+        description="Decode FluxionDiT rollout trajectory to 3D coordinates"
+    )
+    parser.add_argument("--rollout",     required=True, type=Path,
+                        help=".pt file produced by rollout.py or infer.py")
+    parser.add_argument("--latents-dir", required=True, type=Path)
+    parser.add_argument("--atlas-raw",   required=True, type=Path)
+    parser.add_argument("--protein-id",  required=True)
+    parser.add_argument("--out-dir",     required=True, type=Path)
+    parser.add_argument("--mode",        default="nn", choices=["nn", "chai1"])
+    parser.add_argument("--device",      default="cuda")
     args = parser.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    # Load rollout
     print(f"Loading rollout from {args.rollout}", flush=True)
-    rollout_data = torch.load(args.rollout, weights_only=True, map_location="cpu")
-    trajectory = rollout_data["trajectory"]   # [T+1, L, d_single]
-    t_eval      = rollout_data["t_eval"]
-    print(f"  Trajectory: {tuple(trajectory.shape)}  t=[{t_eval[0]:.2f}..{t_eval[-1]:.2f}]",
+    rollout_data = torch.load(args.rollout, weights_only=False, map_location="cpu")
+    trajectory   = rollout_data["trajectory"]   # [T+1, L, d_single]
+    t_eval       = rollout_data["t_eval"]
+    protein_id   = rollout_data.get("protein_id", args.protein_id)
+    print(f"  shape={tuple(trajectory.shape)}  t=[{t_eval[0]:.2f}..{t_eval[-1]:.2f}]",
           flush=True)
 
     if args.mode == "nn":
-        # ── Nearest-neighbor decode ─────────────────────────────────────────
-        print("Loading all latents for nearest-neighbor lookup ...", flush=True)
-        latents, frame_idxs = load_all_latents(args.latents_dir, args.protein_id)
-        print(f"  {len(frame_idxs)} frames in latent store", flush=True)
+        # ── Nearest-neighbor ────────────────────────────────────────────────
+        print("Loading latent store …", flush=True)
+        latents, frame_idxs, replica_ids = load_all_latents(
+            args.latents_dir, protein_id
+        )
+        print(f"  {len(frame_idxs)} frames across replicas "
+              f"{sorted(set(replica_ids))}", flush=True)
 
-        print("Running nearest-neighbor matching ...", flush=True)
-        nn_frames, nn_distances = nn_decode(trajectory, latents, frame_idxs)
-        print(f"  NN frame range: [{nn_frames.min()}, {nn_frames.max()}]", flush=True)
+        print("Running nearest-neighbor search …", flush=True)
+        nn_frames, nn_replicas, nn_distances = nn_decode(
+            trajectory, latents, frame_idxs, replica_ids
+        )
+        print(f"  frame range [{nn_frames.min()}, {nn_frames.max()}]  "
+              f"dist mean={nn_distances.mean():.3f}", flush=True)
 
         # Save NN mapping
-        nn_path = args.out_dir / f"{args.protein_id}_nn_frames.npz"
-        np.savez(nn_path,
-                 nn_frames=nn_frames,
-                 nn_distances=nn_distances,
-                 t_eval=t_eval.numpy())
-        print(f"Saved NN data → {nn_path}", flush=True)
-
-        # Extract coordinates from MD trajectory
-        print("Extracting Cα coordinates from MD trajectory ...", flush=True)
-        ca_coords = extract_ca_trajectory(
-            args.atlas_raw, args.protein_id, nn_frames, replica=args.replica
+        npz_path = args.out_dir / f"{protein_id}_nn_frames.npz"
+        np.savez(
+            npz_path,
+            nn_frames=nn_frames,
+            nn_replicas=nn_replicas,
+            nn_distances=nn_distances,
+            t_eval=t_eval.numpy(),
         )
-        print(f"  Cα coords shape: {ca_coords.shape}", flush=True)
+        print(f"Saved NN data → {npz_path}", flush=True)
+
+        # Extract Cα coordinates
+        print("Extracting Cα coordinates from MD trajectories …", flush=True)
+        ca_coords = extract_ca_trajectory(
+            args.atlas_raw, protein_id, nn_frames, nn_replicas
+        )
+        print(f"  Cα shape: {ca_coords.shape}", flush=True)
 
         # RMSD progression
         rmsds = compute_pairwise_rmsds(ca_coords, ref_idx=0)
-        print(f"  RMSD range: {rmsds.min():.2f} – {rmsds.max():.2f} Å", flush=True)
+        print(f"  Cα RMSD range: {rmsds.min():.2f}–{rmsds.max():.2f} Å", flush=True)
 
-        # Write decoded trajectory as multi-frame PDB
-        pdb_template = args.atlas_raw / args.protein_id / f"{args.protein_id}.pdb"
-        write_trajectory(
-            ca_coords,
-            pdb_template,
-            args.out_dir / f"{args.protein_id}_rollout_nn.pdb",
-            selection="name CA",
+        # Write PDB + XTC
+        pdb_template = args.atlas_raw / protein_id / f"{protein_id}.pdb"
+        write_pdb_trajectory(
+            ca_coords, pdb_template,
+            args.out_dir / f"{protein_id}_rollout_nn.pdb",
+        )
+        write_xtc_trajectory(
+            ca_coords, pdb_template,
+            args.out_dir / f"{protein_id}_rollout_nn.xtc",
         )
 
-        # Summary plot
-        plot_nn_summary(nn_frames, nn_distances, rmsds, args.out_dir, args.protein_id)
+        plot_nn_summary(nn_frames, nn_replicas, nn_distances, rmsds,
+                        args.out_dir, protein_id)
 
     elif args.mode == "chai1":
-        # ── Chai-1 structure module decode ──────────────────────────────────
-        pair_path = args.latents_dir / args.protein_id / "pair.pt"
-        pair = torch.load(pair_path, weights_only=True).float()
-
-        fasta_path = (args.latents_dir / args.protein_id
-                      / f"{args.protein_id}.fasta")
+        # ── Chai-1 structure module ──────────────────────────────────────────
+        pair_path = args.latents_dir / protein_id / "pair.pt"
+        pair      = torch.load(pair_path, weights_only=True).float()
+        fasta_path = args.latents_dir / protein_id / f"{protein_id}.fasta"
         if not fasta_path.exists():
-            raise FileNotFoundError(
-                f"FASTA not found at {fasta_path}.  "
-                "Run extract_pairs.py first to generate it."
-            )
+            raise FileNotFoundError(f"FASTA not found: {fasta_path}")
 
         coords = chai1_decode(trajectory, pair, fasta_path, device)
-        out_pt = args.out_dir / f"{args.protein_id}_rollout_chai1.pt"
+        out_pt = args.out_dir / f"{protein_id}_rollout_chai1.pt"
         torch.save({"coords": torch.from_numpy(coords), "t_eval": t_eval}, out_pt)
         print(f"Saved Chai-1-decoded trajectory → {out_pt}", flush=True)
 
