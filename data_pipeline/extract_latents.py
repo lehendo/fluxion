@@ -385,11 +385,17 @@ def update_manifest(out_dir: Path, protein: str, shard_path: Path, n_frames: int
         with open(out_dir / _MANIFEST_FILE, "w") as f:
             json.dump(manifest, f, indent=2)
 
-def frames_already_done(out_dir: Path, protein: str) -> int:
-    return sum(s["n_frames"] for s in read_manifest(out_dir).get(protein, {}).get("shards", []))
+def frames_already_done(out_dir: Path, protein: str, shard_prefix: str = "") -> int:
+    shards = read_manifest(out_dir).get(protein, {}).get("shards", [])
+    if shard_prefix:
+        shards = [s for s in shards if Path(s["path"]).name.startswith(shard_prefix + "_")]
+    return sum(s["n_frames"] for s in shards)
 
-def shards_already_done(out_dir: Path, protein: str) -> int:
-    return len(read_manifest(out_dir).get(protein, {}).get("shards", []))
+def shards_already_done(out_dir: Path, protein: str, shard_prefix: str = "") -> int:
+    shards = read_manifest(out_dir).get(protein, {}).get("shards", [])
+    if shard_prefix:
+        shards = [s for s in shards if Path(s["path"]).name.startswith(shard_prefix + "_")]
+    return len(shards)
 
 def _flush_shard(protein_dir: Path, out_dir: Path, protein: str, shard_idx: int, singles: List[torch.Tensor], pairs: List[torch.Tensor], frame_indices: List[int], skip_pair: bool, shard_prefix: str = "") -> None:
     path = write_shard(protein_dir, shard_idx, singles, pairs, frame_indices, skip_pair, shard_prefix=shard_prefix)
@@ -432,8 +438,8 @@ def extract(args: argparse.Namespace) -> None:
     log.info("Trajectory: %d frames", n_total)
     all_atoms = u.select_atoms("protein")
 
-    n_done      = frames_already_done(out_dir, protein)
-    shard_idx   = shards_already_done(out_dir, protein)
+    n_done      = frames_already_done(out_dir, protein, shard_prefix)
+    shard_idx   = shards_already_done(out_dir, protein, shard_prefix)
     start_frame = n_done
 
     if start_frame >= n_total:
