@@ -50,7 +50,7 @@ def load_model(
     use_ema: bool = True,
 ) -> FluxionDiT:
     """Load FluxionDiT from a training checkpoint."""
-    state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
 
     # Instantiate with default architecture (same as training defaults)
     model = FluxionDiT()
@@ -267,7 +267,12 @@ def load_z0_from_latents(
 
     # Walk shards to find the requested frame
     frames_seen = 0
+    seen_paths: set[str] = set()
     for shard_info in manifest[protein_id]["shards"]:
+        shard_path = protein_dir / shard_info["path"]
+        if str(shard_path) in seen_paths:
+            continue
+        seen_paths.add(str(shard_path))
         n = shard_info["n_frames"]
         if frames_seen + n > frame_idx:
             local_idx = frame_idx - frames_seen
