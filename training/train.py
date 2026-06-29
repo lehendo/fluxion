@@ -159,6 +159,11 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     model.train()
 
+    loss_log_path = Path(args.scratch_dir) / "loss_log.csv"
+    if global_rank == 0 and not loss_log_path.exists():
+        with open(loss_log_path, "w") as f:
+            f.write("step,epoch,loss,lr\n")
+
     for epoch in range(start_epoch, args.epochs):
         sampler.set_epoch(epoch)
 
@@ -196,10 +201,13 @@ def main(args: argparse.Namespace) -> None:
 
             if global_rank == 0 and step % args.log_interval == 0:
                 lr_now = scheduler.get_last_lr()[0]
+                loss_val = loss.item()
                 print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss.item():.4f} | LR: {lr_now:.2e}",
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_val:.4f} | LR: {lr_now:.2e}",
                     flush=True,
                 )
+                with open(loss_log_path, "a") as f:
+                    f.write(f"{step},{epoch},{loss_val:.6f},{lr_now:.2e}\n")
 
             if (args.checkpoint_interval > 0
                     and step % args.checkpoint_interval == 0
