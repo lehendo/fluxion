@@ -160,11 +160,15 @@ class LatentDataset(Dataset):
 # Multi-protein helpers
 # ---------------------------------------------------------------------------
 
-def build_multi_protein_dataset(latents_dir: Union[str, Path]) -> ConcatDataset:
+def build_multi_protein_dataset(
+    latents_dir: Union[str, Path],
+    protein_ids: list[str] | None = None,
+) -> ConcatDataset:
     """
     Discover all proteins in `latents_dir` that have both manifest.json and
     pair.pt, build a LatentDataset for each, and return a ConcatDataset.
 
+    protein_ids: optional allowlist — if provided, only include those proteins.
     Proteins missing either file are skipped with a warning so a partially
     finished extraction run doesn't block training.
     """
@@ -173,6 +177,8 @@ def build_multi_protein_dataset(latents_dir: Union[str, Path]) -> ConcatDataset:
     skipped = []
     for protein_dir in sorted(latents_dir.iterdir()):
         if not protein_dir.is_dir():
+            continue
+        if protein_ids is not None and protein_dir.name not in protein_ids:
             continue
         manifest = protein_dir / "manifest.json"
         pair     = protein_dir / "pair.pt"

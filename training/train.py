@@ -141,7 +141,8 @@ def main(args: argparse.Namespace) -> None:
     # 5. Dataset + DataLoader
     # ------------------------------------------------------------------
     latents_dir = Path(args.scratch_dir) / "latents"
-    dataset = build_multi_protein_dataset(latents_dir)
+    protein_ids = [p.strip() for p in args.proteins.split(",")] if args.proteins else None
+    dataset = build_multi_protein_dataset(latents_dir, protein_ids=protein_ids)
     sampler = DistributedSampler(dataset, shuffle=True)
     dataloader = DataLoader(
         dataset,
@@ -219,5 +220,7 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-steps",   type=int,   default=2000)
     parser.add_argument("--epochs",         type=int,   default=100)
     parser.add_argument("--log-interval",   type=int,   default=50)
+    parser.add_argument("--proteins",       type=str,   default=None,
+                        help="Comma-separated protein IDs to include (default: all)")
     args = parser.parse_args()
     main(args)
