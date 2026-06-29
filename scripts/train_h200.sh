@@ -4,10 +4,11 @@
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:H200:5
+#SBATCH --gres=gpu:H200:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=256G
 #SBATCH --time=3-00:00:00
+#SBATCH --requeue
 #SBATCH --signal=SIGUSR1@120
 #SBATCH --output=logs/train_h200_%j.out
 #SBATCH --error=logs/train_h200_%j.err
@@ -27,15 +28,15 @@ PILOT_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1
 
 torchrun \
     --nnodes=1 \
-    --nproc_per_node=5 \
+    --nproc_per_node=1 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
     --rdzv_endpoint=$MASTER_ADDR:$MASTER_PORT \
     training/train.py \
     --scratch-dir          /scratch/arjunc4/fluxion_data \
     --proteins             "$PILOT_PROTEINS" \
-    --batch-size           4 \
+    --batch-size           16 \
     --lr                   1e-4 \
-    --epochs               200 \
+    --epochs               50 \
     --log-interval         50 \
     --checkpoint-interval  500
