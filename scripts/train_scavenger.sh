@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=flux_train_scav
 #SBATCH --partition=scavenger
-#SBATCH --nodes=3
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:QuadroRTX6000:8
+#SBATCH --gres=gpu:H200:8
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --time=1-00:00:00
@@ -20,13 +20,13 @@ cd /u/arjunc4/fluxion
 
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
-export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -1)
+export MASTER_ADDR=localhost
 export MASTER_PORT=29500
 
 PILOT_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B"
 
-srun torchrun \
-    --nnodes=3 \
+torchrun \
+    --nnodes=1 \
     --nproc_per_node=8 \
     --rdzv_id=$SLURM_JOB_ID \
     --rdzv_backend=c10d \
