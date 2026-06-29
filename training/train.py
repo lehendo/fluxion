@@ -201,6 +201,14 @@ def main(args: argparse.Namespace) -> None:
                     flush=True,
                 )
 
+            if (args.checkpoint_interval > 0
+                    and step % args.checkpoint_interval == 0
+                    and global_rank == 0):
+                save_checkpoint(
+                    checkpoint_dir, step, epoch,
+                    model.module, ema_model, optimizer, scheduler,
+                )
+
         # End-of-epoch checkpoint (rank 0 only)
         if global_rank == 0:
             save_checkpoint(
@@ -220,7 +228,9 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-steps",   type=int,   default=2000)
     parser.add_argument("--epochs",         type=int,   default=100)
     parser.add_argument("--log-interval",   type=int,   default=50)
-    parser.add_argument("--proteins",       type=str,   default=None,
+    parser.add_argument("--proteins",             type=str,   default=None,
                         help="Comma-separated protein IDs to include (default: all)")
+    parser.add_argument("--checkpoint-interval", type=int,   default=0,
+                        help="Save checkpoint every N steps (0 = off, use for scavenger)")
     args = parser.parse_args()
     main(args)
