@@ -77,6 +77,16 @@ def run(args: argparse.Namespace) -> dict:
         print(f"[infer] Loading model from {args.checkpoint}", flush=True)
         model = load_model(args.checkpoint, device, use_ema=not args.no_ema)
 
+        norm_stats_path = args.latents_dir / "norm_stats.pt"
+        if not norm_stats_path.exists():
+            raise FileNotFoundError(
+                f"Normalization stats not found at {norm_stats_path}. "
+                "Run data_pipeline/compute_norm_stats.py first — the model "
+                "was trained on normalized latents, so rollout must "
+                "integrate in that same space."
+            )
+        norm_stats = torch.load(norm_stats_path, weights_only=True)
+
         print(f"[infer] Loading z0: protein={args.protein_id!r} frame={args.frame}",
               flush=True)
         z0, pair = load_z0_from_latents(args.latents_dir, args.protein_id, args.frame)
@@ -91,6 +101,7 @@ def run(args: argparse.Namespace) -> dict:
             t_end=args.t_end,
             method=args.method,
             device=device,
+            norm_stats=norm_stats,
         )
         rollout_elapsed = time.perf_counter() - t0
         print(f"  trajectory {tuple(trajectory.shape)}  "

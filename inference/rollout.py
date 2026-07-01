@@ -181,21 +181,31 @@ def rollout(
     t_end: float = 1.0,
     method: str = "euler",
     device: torch.device | None = None,
+    norm_stats: dict[str, torch.Tensor] | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Integrate the velocity field from t=0 to t=t_end.
 
     Args:
-        model:    trained FluxionDiT (eval mode, on `device`)
-        z0:       initial latent [L, d] or [1, L, d]
-        pair:     conditioning pair rep [L, L, d_p] or [1, L, L, d_p]
-        n_steps:  number of integration steps (for fixed-step methods)
-        t_end:    integration end time (default 1.0 = full OT-CFM trajectory)
-        method:   "euler" | "heun" | "rk4" | "dopri5" | "bosh3" | ...
-        device:   move tensors here if provided
+        model:      trained FluxionDiT (eval mode, on `device`)
+        z0:         initial latent [L, d] or [1, L, d] — raw Chai-1 scale
+        pair:       conditioning pair rep [L, L, d_p] or [1, L, L, d_p]
+        n_steps:    number of integration steps (for fixed-step methods)
+        t_end:      integration end time (default 1.0 = full OT-CFM trajectory)
+        method:     "euler" | "heun" | "rk4" | "dopri5" | "bosh3" | ...
+        device:     move tensors here if provided
+        norm_stats: optional {"mean": [d_single], "std": [d_single]} produced
+                    by data_pipeline/compute_norm_stats.py. If given, the ODE
+                    is integrated in the same normalized latent space the
+                    model was trained on — z0 is normalized before the first
+                    step, and the returned trajectory is mapped back to raw
+                    Chai-1 scale. The public contract of rollout() is always
+                    raw latents in, raw latents out, regardless of what space
+                    the model internally operates in.
 
     Returns:
-        trajectory: [n_steps+1, L, d_single] float32 — latent at each step
+        trajectory: [n_steps+1, L, d_single] float32 — raw-scale latent at
+                    each step
         t_eval:     [n_steps+1] float32 — corresponding time points
     """
     if device is not None:
@@ -211,24 +221,34 @@ def rollout(
     # Pre-cast pair to match model dtype for efficiency; kept fixed throughout
     pair = pair.to(next(model.parameters()).dtype)
 
+    mean = std = None
+    if norm_stats is not None:
+        mean = norm_stats["mean"].to(z0.device, z0.dtype)
+        std  = norm_stats["std"].to(z0.device, z0.dtype)
+
+    z0_int = (z0 - mean) / std if mean is not None else z0
+
     # Closure captures `model` and `pair` — only z and t vary during integration
     def velocity_fn(z: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         z = z.to(pair.dtype)
         return model(z, pair, t)
 
     t_eval = torch.linspace(0.0, t_end, n_steps + 1, device=z0.device)
-    z0 = z0.to(pair.dtype)
+    z0_int = z0_int.to(pair.dtype)
 
     fixed_methods = {"euler": euler, "heun": heun, "rk4": rk4}
 
     if method in fixed_methods:
-        traj = fixed_methods[method](velocity_fn, z0, t_eval)  # [T+1, 1, L, d]
+        traj = fixed_methods[method](velocity_fn, z0_int, t_eval)  # [T+1, 1, L, d]
     else:
-        traj = _odeint_adaptive(velocity_fn, z0, t_eval, method)
+        traj = _odeint_adaptive(velocity_fn, z0_int, t_eval, method)
 
     # Remove batch dim: [T+1, 1, L, d] → [T+1, L, d]
     traj = traj.squeeze(1).float().cpu()
     t_eval = t_eval.float().cpu()
+
+    if mean is not None:
+        traj = traj * std.float().cpu() + mean.float().cpu()
 
     return traj, t_eval
 
@@ -319,6 +339,18 @@ def main() -> None:
     # Load model
     model = load_model(args.checkpoint, device, use_ema=not args.no_ema)
 
+    # Load normalization stats — the model was trained on normalized latents
+    # (see data_pipeline/compute_norm_stats.py), so rollout must integrate in
+    # that same space or the velocity field is being fed out-of-distribution
+    # inputs from step one.
+    norm_stats_path = args.latents_dir / "norm_stats.pt"
+    if not norm_stats_path.exists():
+        raise FileNotFoundError(
+            f"Normalization stats not found at {norm_stats_path}. "
+            "Run data_pipeline/compute_norm_stats.py first."
+        )
+    norm_stats = torch.load(norm_stats_path, weights_only=True)
+
     # Load initial latent
     print(f"Loading z_0 from protein={args.protein_id!r}, frame={args.frame}", flush=True)
     z0, pair = load_z0_from_latents(args.latents_dir, args.protein_id, args.frame)
@@ -333,6 +365,7 @@ def main() -> None:
         t_end=args.t_end,
         method=args.method,
         device=device,
+        norm_stats=norm_stats,
     )
     print(f"Trajectory shape: {tuple(trajectory.shape)}", flush=True)
 

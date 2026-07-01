@@ -9,6 +9,7 @@ handles are never shared across DataLoader workers (h5py handles are not fork-sa
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Union
 
@@ -16,6 +17,10 @@ import h5py
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, ConcatDataset
+
+
+_REPLICA_RE   = re.compile(r"_R(\d+)_")
+_SHARD_NUM_RE = re.compile(r"shard_(\d+)\.h5$")
 
 
 class LatentDataset(Dataset):
@@ -38,11 +43,28 @@ class LatentDataset(Dataset):
     It is loaded once into CPU RAM in __init__ and shared across all workers
     via copy-on-write fork semantics — no per-item IO.
 
+    Replica-safe frame pairing
+    ---------------------------
+    ATLAS proteins have multiple independent MD replicas, extracted by
+    concurrent SLURM tasks that each append their own shards to one shared
+    manifest.json (guarded only by a file lock, not by write order). So shard
+    entries in the manifest are interleaved by whichever job finished a shard
+    first — not grouped by replica and not necessarily in shard-index order.
+    Shard filenames encode the replica as "<protein>_R<n>_shard_NNNNNN.h5";
+    this class groups shards by that tag and only pairs consecutive frames
+    within the same replica group, so z0/z1 training pairs never splice
+    together two unrelated trajectories. Shards without a replica tag (e.g.
+    single-trajectory fixtures) fall into one implicit group.
+
     Args:
         data_dir:     Root scratch directory containing per-protein subdirs.
         protein_name: Subdirectory name (e.g. "16pk_A").
         load_pair:    If False, returns None for pair (saves IO when only single
                       is needed, e.g. during fast single-rep ablations).
+        norm_stats:   Optional {"mean": [d_single], "std": [d_single]} (as
+                      produced by data_pipeline/compute_norm_stats.py). If
+                      given, z0/z1 are returned as (x - mean) / std instead of
+                      raw Chai-1 latent scale.
     """
 
     def __init__(
@@ -50,10 +72,13 @@ class LatentDataset(Dataset):
         data_dir: Union[str, Path],
         protein_name: str,
         load_pair: bool = True,
+        norm_stats: dict[str, torch.Tensor] | None = None,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.protein_name = protein_name
         self.load_pair = load_pair
+        self.norm_mean = norm_stats["mean"].float() if norm_stats is not None else None
+        self.norm_std  = norm_stats["std"].float()  if norm_stats is not None else None
 
         protein_dir = self.data_dir / protein_name
         manifest_path = protein_dir / "manifest.json"
@@ -71,15 +96,38 @@ class LatentDataset(Dataset):
             if not (s["path"] in seen or seen.add(s["path"]))  # type: ignore[func-returns-value]
         ]
 
-        # Flat index: list of (shard_path, local_frame_index)
-        # Built once in __init__; workers read from it without re-loading json.
+        # Group shards by replica (see class docstring), then order each
+        # group by shard index — never trust raw manifest append order.
+        groups: dict[str, list[dict]] = {}
+        for s in self.shards:
+            name = Path(s["path"]).name
+            m = _REPLICA_RE.search(name)
+            groups.setdefault(m.group(1) if m else "", []).append(s)
+
+        def _shard_num(shard_info: dict) -> int:
+            m = _SHARD_NUM_RE.search(Path(shard_info["path"]).name)
+            return int(m.group(1)) if m else 0
+
+        # index_map: flat (shard_path, local_idx) for every frame, laid out
+        # replica group by replica group, each group internally ordered by
+        # shard index. _next_idx[i] gives the index_map position to use as
+        # the z1 partner for position i — normally i+1, but at the last frame
+        # of each replica group it wraps back to i itself (zero target
+        # velocity) instead of reaching into the next, unrelated group.
         self.index_map: list[tuple[Path, int]] = []
-        for shard_info in self.shards:
-            shard_path = protein_dir / shard_info["path"]
-            if not shard_path.exists():
-                raise FileNotFoundError(f"Shard referenced in manifest missing: {shard_path}")
-            for local_idx in range(shard_info["n_frames"]):
-                self.index_map.append((shard_path, local_idx))
+        self._next_idx: list[int] = []
+        for rep_key in sorted(groups):
+            rep_shards = sorted(groups[rep_key], key=_shard_num)
+            group_start = len(self.index_map)
+            for shard_info in rep_shards:
+                shard_path = protein_dir / shard_info["path"]
+                if not shard_path.exists():
+                    raise FileNotFoundError(f"Shard referenced in manifest missing: {shard_path}")
+                for local_idx in range(shard_info["n_frames"]):
+                    self.index_map.append((shard_path, local_idx))
+            group_end = len(self.index_map)
+            for i in range(group_start, group_end):
+                self._next_idx.append(i + 1 if i + 1 < group_end else i)
 
         # Static pair tensor — loaded once, shared across all workers via
         # copy-on-write fork semantics. Zero per-item IO cost.
@@ -105,6 +153,11 @@ class LatentDataset(Dataset):
     def __len__(self) -> int:
         return len(self.index_map)
 
+    def _normalize(self, x: torch.Tensor) -> torch.Tensor:
+        if self.norm_mean is None:
+            return x
+        return (x - self.norm_mean) / self.norm_std
+
     def __getitem__(
         self, idx: int
     ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor | None, int]:
@@ -113,10 +166,11 @@ class LatentDataset(Dataset):
 
         Returns:
             (single_0, single_1): float32 [L, d_single] each — frames i and i+1
+                                   (normalized if norm_stats was provided)
             pair:      float32 [L, L, d_pair] from frame i, or None if load_pair=False
             frame_idx: int — original MD trajectory frame index of z0
         """
-        idx1 = min(idx + 1, len(self) - 1)
+        idx1 = self._next_idx[idx]
 
         shard_path_0, local_idx_0 = self.index_map[idx]
         shard_path_1, local_idx_1 = self.index_map[idx1]
@@ -130,8 +184,8 @@ class LatentDataset(Dataset):
         f0 = _get_handle(shard_path_0)
         f1 = _get_handle(shard_path_1)
 
-        single_0  = torch.from_numpy(f0["single"][local_idx_0]).float()
-        single_1  = torch.from_numpy(f1["single"][local_idx_1]).float()
+        single_0  = self._normalize(torch.from_numpy(f0["single"][local_idx_0]).float())
+        single_1  = self._normalize(torch.from_numpy(f1["single"][local_idx_1]).float())
         frame_idx = int(f0["frame_idx"][local_idx_0])
 
         # Static pair: already in RAM, return directly (no HDF5 read)
@@ -163,6 +217,7 @@ class LatentDataset(Dataset):
 def build_multi_protein_dataset(
     latents_dir: Union[str, Path],
     protein_ids: list[str] | None = None,
+    norm_stats_path: Union[str, Path, None] = None,
 ) -> ConcatDataset:
     """
     Discover all proteins in `latents_dir` that have both manifest.json and
@@ -171,8 +226,29 @@ def build_multi_protein_dataset(
     protein_ids: optional allowlist — if provided, only include those proteins.
     Proteins missing either file are skipped with a warning so a partially
     finished extraction run doesn't block training.
+
+    norm_stats_path: optional explicit path to a norm_stats.pt file (as
+    produced by data_pipeline/compute_norm_stats.py) with per-channel "mean"
+    and "std" for the single-token latents. If not given, auto-detects
+    "<latents_dir>/norm_stats.pt"; if that also doesn't exist, proceeds
+    WITHOUT normalization (a warning is printed). Callers that require
+    normalized data (e.g. training/train.py) must verify the file exists
+    themselves before calling this, so training never silently runs
+    unnormalized.
     """
     latents_dir = Path(latents_dir)
+
+    if norm_stats_path is None:
+        norm_stats_path = latents_dir / "norm_stats.pt"
+    norm_stats_path = Path(norm_stats_path)
+    norm_stats: dict[str, torch.Tensor] | None = None
+    if norm_stats_path.exists():
+        norm_stats = torch.load(norm_stats_path, weights_only=True)
+        print(f"[dataset] Loaded normalization stats from {norm_stats_path}", flush=True)
+    else:
+        print(f"[dataset] No normalization stats found at {norm_stats_path} — "
+              f"proceeding WITHOUT latent normalization.", flush=True)
+
     datasets = []
     skipped = []
     for protein_dir in sorted(latents_dir.iterdir()):
@@ -185,7 +261,9 @@ def build_multi_protein_dataset(
         if not manifest.exists() or not pair.exists():
             skipped.append(protein_dir.name)
             continue
-        datasets.append(LatentDataset(latents_dir, protein_dir.name, load_pair=True))
+        datasets.append(LatentDataset(
+            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats,
+        ))
 
     if skipped:
         print(f"[dataset] Skipped {len(skipped)} proteins (missing manifest or pair.pt): "

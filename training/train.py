@@ -141,6 +141,21 @@ def main(args: argparse.Namespace) -> None:
     # 5. Dataset + DataLoader
     # ------------------------------------------------------------------
     latents_dir = Path(args.scratch_dir) / "latents"
+
+    # Normalization stats are required, not optional. FlowMatcher's MSE loss
+    # regresses directly against these latents; left unnormalized, a handful
+    # of high-variance channels dominate the loss and starve gradient signal
+    # for everything else — see data_pipeline/compute_norm_stats.py docstring.
+    norm_stats_path = latents_dir / "norm_stats.pt"
+    if not norm_stats_path.exists():
+        proteins_flag = f' --proteins "{args.proteins}"' if args.proteins else ""
+        raise FileNotFoundError(
+            f"Normalization stats not found at {norm_stats_path}. Run:\n"
+            f"  python data_pipeline/compute_norm_stats.py "
+            f"--latents-dir {latents_dir}{proteins_flag}\n"
+            f"before training."
+        )
+
     protein_ids = [p.strip() for p in args.proteins.split(",")] if args.proteins else None
     dataset = build_multi_protein_dataset(latents_dir, protein_ids=protein_ids)
     sampler = DistributedSampler(dataset, shuffle=True)

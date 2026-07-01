@@ -258,3 +258,54 @@ class TestRollout:
         # Trajectory must vary over time (velocity ≠ 0)
         assert not torch.allclose(traj[-1], traj[0], atol=1e-3), \
             "Nonzero model should produce a trajectory that moves away from z0"
+
+
+# ---------------------------------------------------------------------------
+# rollout() — normalization round-trip
+# ---------------------------------------------------------------------------
+
+class TestRolloutNormalization:
+    """
+    rollout()'s public contract is raw-scale latents in, raw-scale latents
+    out, even though it internally integrates in normalized space when
+    norm_stats is given. These tests pin that round-trip.
+    """
+
+    @pytest.fixture
+    def model(self):
+        return _tiny_model().eval()
+
+    @pytest.fixture
+    def norm_stats(self):
+        torch.manual_seed(0)
+        return {"mean": torch.randn(D_S) * 5.0, "std": torch.rand(D_S) + 0.5}
+
+    def test_first_frame_equals_raw_z0(self, model, norm_stats):
+        z0   = torch.randn(L, D_S)
+        pair = torch.randn(L, L, D_P)
+        traj, _ = rollout(model, z0, pair, n_steps=5, norm_stats=norm_stats)
+        assert torch.allclose(traj[0], z0, atol=1e-4)
+
+    def test_zero_init_model_stays_at_raw_z0(self, model, norm_stats):
+        """Zero-init model predicts zero velocity regardless of input scale,
+        so with norm_stats the trajectory must still stay flat at the raw z0
+        once mapped back out of normalized space."""
+        z0   = torch.randn(L, D_S)
+        pair = torch.randn(L, L, D_P)
+        traj, _ = rollout(model, z0, pair, n_steps=10, norm_stats=norm_stats)
+        for i in range(traj.shape[0]):
+            assert torch.allclose(traj[i], z0, atol=1e-4), \
+                f"Frame {i} diverged from raw z0 under zero-init model with norm_stats"
+
+    def test_no_nan_with_norm_stats(self, model, norm_stats):
+        z0   = torch.randn(L, D_S)
+        pair = torch.randn(L, L, D_P)
+        traj, _ = rollout(model, z0, pair, n_steps=20, method="euler", norm_stats=norm_stats)
+        assert not traj.isnan().any()
+
+    def test_output_shapes_with_norm_stats(self, model, norm_stats):
+        z0   = torch.randn(L, D_S)
+        pair = torch.randn(L, L, D_P)
+        traj, t_eval = rollout(model, z0, pair, n_steps=10, norm_stats=norm_stats)
+        assert traj.shape   == (11, L, D_S)
+        assert t_eval.shape == (11,)

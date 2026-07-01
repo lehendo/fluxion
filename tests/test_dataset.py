@@ -59,6 +59,30 @@ def _write_pair(protein_dir: Path, L: int) -> None:
     torch.save(pair, protein_dir / "pair.pt")
 
 
+def _write_shard_valued(
+    protein_dir: Path,
+    shard_name: str,
+    n_frames: int,
+    L: int,
+    d_s: int,
+    start_frame: int,
+    value_offset: float,
+) -> Path:
+    """Writes a shard whose frames are filled with distinctive constants
+    (value_offset + local frame position) so cross-shard pairing can be
+    verified directly from tensor values, not just frame_idx bookkeeping."""
+    path = protein_dir / shard_name
+    with h5py.File(path, "w") as f:
+        singles = np.stack([
+            np.full((L, d_s), value_offset + i, dtype=np.float16)
+            for i in range(n_frames)
+        ])
+        frames = np.arange(start_frame, start_frame + n_frames, dtype=np.int32)
+        f.create_dataset("single", data=singles)
+        f.create_dataset("frame_idx", data=frames)
+    return path
+
+
 def _write_manifest(out_dir: Path, protein: str, shard_entries: list[dict]) -> None:
     manifest = {protein: {"shards": shard_entries}}
     with open(out_dir / "manifest.json", "w") as f:
@@ -180,6 +204,155 @@ class TestLatentDataset:
 
 
 # ---------------------------------------------------------------------------
+# Replica-aware pairing — the concurrent-extraction interleaving bug
+# ---------------------------------------------------------------------------
+
+class TestReplicaAwarePairing:
+    def test_no_cross_replica_pairing(self, tmp_path):
+        """
+        Replica-extraction workers run as concurrent SLURM tasks and append
+        to one shared manifest.json, so shard entries can land interleaved
+        by completion time rather than grouped by replica. z0/z1 pairs must
+        never span two different replicas' shards.
+        """
+        protein = "protX"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+
+        L, d_s = 6, 4
+        n_r1, n_r2 = 5, 4
+
+        # Replica 1 values in [0, n_r1); replica 2 values in [1000, 1000+n_r2)
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n_r1, L, d_s, 0, 0.0)
+        _write_shard_valued(shard_dir, f"{protein}_R2_shard_000000.h5", n_r2, L, d_s, 0, 1000.0)
+
+        # Manifest lists replica 2's shard BEFORE replica 1's — simulates the
+        # concurrent-write race where whichever job finishes first appends
+        # first, regardless of replica number.
+        shards = [
+            {"path": f"{protein}/{protein}_R2_shard_000000.h5", "n_frames": n_r2,
+             "first_idx": 0, "last_idx": n_r2 - 1},
+            {"path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n_r1,
+             "first_idx": 0, "last_idx": n_r1 - 1},
+        ]
+        _write_manifest(protein_dir, protein, shards)
+        _write_pair(protein_dir, L)
+
+        ds = LatentDataset(tmp_path, protein)
+        assert len(ds) == n_r1 + n_r2
+
+        for i in range(len(ds)):
+            (z0, z1), _, _ = ds[i]
+            z0_replica = "R1" if z0[0, 0].item() < 1000 else "R2"
+            z1_replica = "R1" if z1[0, 0].item() < 1000 else "R2"
+            assert z0_replica == z1_replica, (
+                f"index {i}: z0 is from {z0_replica} but z1 is from {z1_replica} "
+                "— pairing crossed a replica boundary"
+            )
+
+    def test_last_frame_of_each_replica_self_pairs(self, tmp_path):
+        protein = "protY"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s = 6, 4
+        n_r1, n_r2 = 3, 3
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n_r1, L, d_s, 0, 0.0)
+        _write_shard_valued(shard_dir, f"{protein}_R2_shard_000000.h5", n_r2, L, d_s, 0, 1000.0)
+        shards = [
+            {"path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n_r1,
+             "first_idx": 0, "last_idx": n_r1 - 1},
+            {"path": f"{protein}/{protein}_R2_shard_000000.h5", "n_frames": n_r2,
+             "first_idx": 0, "last_idx": n_r2 - 1},
+        ]
+        _write_manifest(protein_dir, protein, shards)
+        _write_pair(protein_dir, L)
+
+        ds = LatentDataset(tmp_path, protein)
+
+        (z0, z1), _, _ = ds[n_r1 - 1]  # last frame of replica 1
+        assert torch.allclose(z0, z1)
+
+        last = len(ds) - 1  # last frame of replica 2
+        (z0, z1), _, _ = ds[last]
+        assert torch.allclose(z0, z1)
+
+    def test_shard_order_within_replica_uses_shard_index_not_manifest_order(self, tmp_path):
+        """Manifest can also list a replica's own shards out of numeric order
+        (a resumed job appending after an earlier one). Must still sort by
+        the numeric shard index in the filename, not manifest append order."""
+        protein = "protZ"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s = 4, 3
+
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", 3, L, d_s, 0, 0.0)
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000001.h5", 3, L, d_s, 3, 100.0)
+
+        # Manifest lists shard_000001 before shard_000000.
+        shards = [
+            {"path": f"{protein}/{protein}_R1_shard_000001.h5", "n_frames": 3,
+             "first_idx": 3, "last_idx": 5},
+            {"path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": 3,
+             "first_idx": 0, "last_idx": 2},
+        ]
+        _write_manifest(protein_dir, protein, shards)
+        _write_pair(protein_dir, L)
+
+        ds = LatentDataset(tmp_path, protein)
+        # Frame 2 (value 2.0, last of shard 0) must pair with frame 3
+        # (value 100.0, first of shard 1) — the true trajectory continuation.
+        (z0, z1), _, _ = ds[2]
+        assert z0[0, 0].item() == pytest.approx(2.0)
+        assert z1[0, 0].item() == pytest.approx(100.0)
+
+
+# ---------------------------------------------------------------------------
+# Normalization
+# ---------------------------------------------------------------------------
+
+class TestNormalization:
+    def test_no_normalization_by_default(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = LatentDataset(tmp_path, "protA")
+        assert ds.norm_mean is None
+        assert ds.norm_std is None
+
+    def test_normalization_applied(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        mean = torch.full((D_S,), 2.0)
+        std  = torch.full((D_S,), 3.0)
+        ds_raw  = LatentDataset(tmp_path, "protA")
+        ds_norm = LatentDataset(tmp_path, "protA", norm_stats={"mean": mean, "std": std})
+        (z0_raw, z1_raw),   _, _ = ds_raw[0]
+        (z0_norm, z1_norm), _, _ = ds_norm[0]
+        assert torch.allclose(z0_norm, (z0_raw - mean) / std, atol=1e-5)
+        assert torch.allclose(z1_norm, (z1_raw - mean) / std, atol=1e-5)
+
+    def test_normalized_output_has_expected_scale(self, tmp_path):
+        """Normalizing with the true per-channel mean/std of a large constant
+        field should collapse it to ~0."""
+        protein_dir = tmp_path / "protC"
+        shard_dir = protein_dir / "protC"
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 5, 4, 6
+        with h5py.File(shard_dir / "shard_000000.h5", "w") as f:
+            f.create_dataset("single", data=np.full((n, L, d_s), 10.0, dtype=np.float16))
+            f.create_dataset("frame_idx", data=np.arange(n, dtype=np.int32))
+        _write_manifest(protein_dir, "protC", [{
+            "path": "protC/shard_000000.h5", "n_frames": n, "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        norm_stats = {"mean": torch.full((d_s,), 10.0), "std": torch.full((d_s,), 1.0)}
+        ds = LatentDataset(tmp_path, "protC", norm_stats=norm_stats)
+        (z0, _), _, _ = ds[0]
+        assert torch.allclose(z0, torch.zeros_like(z0), atol=1e-2)
+
+
+# ---------------------------------------------------------------------------
 # build_multi_protein_dataset tests
 # ---------------------------------------------------------------------------
 
@@ -216,6 +389,23 @@ class TestBuildMultiProteinDataset:
     def test_raises_if_no_valid_proteins(self, tmp_path):
         with pytest.raises(RuntimeError, match="No valid protein"):
             build_multi_protein_dataset(tmp_path)
+
+    def test_auto_detects_norm_stats(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        mean = torch.zeros(D_S)
+        std  = torch.full((D_S,), 2.0)
+        torch.save({"mean": mean, "std": std}, tmp_path / "norm_stats.pt")
+
+        ds = build_multi_protein_dataset(tmp_path)
+        underlying = ds.datasets[0]
+        assert underlying.norm_mean is not None
+        assert torch.allclose(underlying.norm_std, std)
+
+    def test_no_norm_stats_proceeds_unnormalized(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = build_multi_protein_dataset(tmp_path)
+        underlying = ds.datasets[0]
+        assert underlying.norm_mean is None
 
 
 # ---------------------------------------------------------------------------
