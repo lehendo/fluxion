@@ -29,12 +29,21 @@ Case 1 calls for debugging the optimizer/LR/architecture. Case 2 calls for
 rethinking the conditioning (e.g. feeding a short history of frames instead
 of a single z_t) rather than chasing a training bug that isn't there.
 
+Memory note
+-----------
+The static pair tensor is [batch_size, L, L, d_pair] float32 — at the
+confirmed Chai-1 crop size L=512 and d_pair=256, that's ~4.3 GB per batch
+at batch_size=16. This script streams one batch at a time and computes the
+baseline, raw-model, and EMA-model losses on it before moving on, so peak
+memory stays at O(1 batch) regardless of --n-batches — never materialize a
+list of batches for "reuse" across metrics.
+
 Usage:
     python scripts/evaluate_checkpoint.py \
         --checkpoint  /scratch/arjunc4/fluxion_data/checkpoints/checkpoint.pt \
         --latents-dir /scratch/arjunc4/fluxion_data/latents \
         --proteins    "$PILOT_PROTEINS" \
-        --n-batches   200 --batch-size 16 --device cpu
+        --n-batches   100 --batch-size 4 --device cpu
 """
 
 from __future__ import annotations
@@ -44,7 +53,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import torch
 from torch.utils.data import DataLoader
@@ -52,9 +60,6 @@ from torch.utils.data import DataLoader
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
 from data_pipeline.dataset import build_multi_protein_dataset, collate_fn
-from compute_trivial_baseline import compute_trivial_baseline_mse
-
-Batch = tuple
 
 
 def summarize_wakeup(model: FluxionDiT) -> dict[str, float]:
@@ -74,42 +79,65 @@ def summarize_wakeup(model: FluxionDiT) -> dict[str, float]:
     return stats
 
 
-def collect_batches(dataloader: DataLoader, n_batches: int) -> list[Batch]:
-    """Pulls exactly n_batches batches from dataloader into a fixed list, so
-    every downstream metric (baseline, raw model, EMA model) is computed on
-    the identical sample — an apples-to-apples comparison with no risk of
-    RNG-determinism drift across separately-seeded DataLoader instances."""
-    batches: list[Batch] = []
+@torch.no_grad()
+def evaluate_stream(
+    model: FluxionDiT,
+    ema_model: FluxionDiT,
+    matcher: FlowMatcher,
+    dataloader: DataLoader,
+    n_batches: int,
+    device: torch.device,
+) -> dict[str, float]:
+    """
+    Single streaming pass over n_batches batches, computing the trivial
+    (v_pred=0) baseline, the raw model's loss, and the EMA model's loss on
+    the identical samples for each batch — without ever holding more than
+    one batch (and its potentially large static pair tensor) in memory.
+
+    Returns:
+        {"baseline": float, "raw_loss": float, "ema_loss": float,
+         "n_tokens": int, "n_samples": int}
+    """
+    model.eval()
+    ema_model.eval()
+
+    total_baseline_sq = 0.0
+    total_raw_loss = 0.0
+    total_ema_loss = 0.0
+    total_tokens = 0
+    total_samples = 0
+
     it = iter(dataloader)
     for _ in range(n_batches):
         try:
-            batches.append(next(it))
+            (z0, z1), pair, _fidx, padding_mask = next(it)
         except StopIteration:
             it = iter(dataloader)
-            batches.append(next(it))
-    return batches
+            (z0, z1), pair, _fidx, padding_mask = next(it)
 
-
-@torch.no_grad()
-def compute_model_loss(
-    model: FluxionDiT,
-    matcher: FlowMatcher,
-    batches: list[Batch],
-    device: torch.device,
-) -> tuple[float, int]:
-    model.eval()
-    total_loss = 0.0
-    total_n = 0
-    for (z0, z1), pair, _fidx, padding_mask in batches:
         z0, z1 = z0.to(device), z1.to(device)
         pair = pair.to(device)
         padding_mask = padding_mask.to(device)
 
-        loss = matcher.compute_loss(model, z0, z1, pair, padding_mask)
-        total_loss += loss.item() * z0.shape[0]
-        total_n += z0.shape[0]
+        # Trivial (v_pred=0) baseline — token-weighted, matches FlowMatcher's
+        # own padding-aware averaging.
+        u_t = z1 - z0
+        valid = (~padding_mask).float().unsqueeze(-1)
+        total_baseline_sq += ((u_t ** 2) * valid).sum().item()
+        total_tokens += valid.sum().item() * u_t.shape[-1]
 
-    return total_loss / total_n, total_n
+        # Raw + EMA model loss on the exact same batch.
+        total_raw_loss += matcher.compute_loss(model, z0, z1, pair, padding_mask).item() * z0.shape[0]
+        total_ema_loss += matcher.compute_loss(ema_model, z0, z1, pair, padding_mask).item() * z0.shape[0]
+        total_samples += z0.shape[0]
+
+    return {
+        "baseline": total_baseline_sq / total_tokens,
+        "raw_loss": total_raw_loss / total_samples,
+        "ema_loss": total_ema_loss / total_samples,
+        "n_tokens": total_tokens,
+        "n_samples": total_samples,
+    }
 
 
 def main() -> None:
@@ -117,9 +145,9 @@ def main() -> None:
     parser.add_argument("--checkpoint",  required=True, type=Path)
     parser.add_argument("--latents-dir", required=True, type=Path)
     parser.add_argument("--proteins",    type=str, default=None)
-    parser.add_argument("--n-batches",   type=int, default=200)
-    parser.add_argument("--batch-size",  type=int, default=16)
-    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--n-batches",   type=int, default=100)
+    parser.add_argument("--batch-size",  type=int, default=4)
+    parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--device",      type=str, default="cpu")
     parser.add_argument("--seed",        type=int, default=0)
     args = parser.parse_args()
@@ -157,23 +185,23 @@ def main() -> None:
         num_workers=args.num_workers, collate_fn=collate_fn, drop_last=True,
     )
 
-    print(f"\n[eval] Sampling {args.n_batches} fixed batches for comparison...", flush=True)
-    batches = collect_batches(dataloader, args.n_batches)
-
     matcher = FlowMatcher()
 
-    baseline, n_baseline = compute_trivial_baseline_mse(batches, len(batches))
-    raw_loss, n_raw       = compute_model_loss(model, matcher, batches, device)
-    ema_loss, n_ema        = compute_model_loss(ema_model, matcher, batches, device)
+    print(f"\n[eval] Streaming {args.n_batches} batches of {args.batch_size} "
+          f"({args.n_batches * args.batch_size} samples)...", flush=True)
+    results = evaluate_stream(model, ema_model, matcher, dataloader, args.n_batches, device)
+
+    baseline = results["baseline"]
 
     def _verdict(loss: float) -> str:
         pct = (1 - loss / baseline) * 100
         return f"[{'BELOW' if loss < baseline else 'AT/ABOVE'} baseline, {pct:+.2f}%]"
 
-    print(f"\n[eval] ── Results (same {n_baseline} samples for all three) ──────────")
+    print(f"\n[eval] ── Results ({results['n_samples']} samples, "
+          f"{results['n_tokens']:.0f} tokens) ──────────")
     print(f"  Trivial baseline (v_pred=0): {baseline:.6f}")
-    print(f"  Raw model loss:              {raw_loss:.6f}  {_verdict(raw_loss)}")
-    print(f"  EMA model loss:              {ema_loss:.6f}  {_verdict(ema_loss)}")
+    print(f"  Raw model loss:              {results['raw_loss']:.6f}  {_verdict(results['raw_loss'])}")
+    print(f"  EMA model loss:              {results['ema_loss']:.6f}  {_verdict(results['ema_loss'])}")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 #SBATCH --partition=secondary
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/eval_%j.out
@@ -21,7 +21,7 @@ python scripts/evaluate_checkpoint.py \
     --checkpoint  /scratch/arjunc4/fluxion_data/checkpoints/checkpoint.pt \
     --latents-dir /scratch/arjunc4/fluxion_data/latents \
     --proteins    "$PILOT_PROTEINS" \
-    --n-batches   200 \
-    --batch-size  16 \
-    --num-workers 4 \
+    --n-batches   100 \
+    --batch-size  4 \
+    --num-workers 2 \
     --device      cpu
