@@ -201,13 +201,17 @@ class TestFluxionDiT:
     def test_padding_mask_changes_output_after_init_broken(self, model):
         """Masking must change output once the FinalLayer is non-zero.
         At zero-init FinalLayer always outputs zero; we break that here."""
-        # Give the final linear a non-zero init so masking propagates to output
+        torch.manual_seed(0)
         with torch.no_grad():
-            model.final_layer.linear.weight.fill_(0.01)
-            model.final_layer.linear.bias.fill_(0.0)
-            # Break adaLN-zero so gates are non-zero
+            # Random (not constant) weights avoid zero-mean cancellation that
+            # a fill_(c) constant matrix causes when dotted against the
+            # zero-mean output of an elementwise_affine=False LayerNorm — a
+            # constant weight row times a zero-mean vector collapses to ~0
+            # regardless of masking, making the test flaky/vacuous.
+            torch.nn.init.normal_(model.final_layer.linear.weight, std=1.0)
+            model.final_layer.linear.bias.zero_()
             for block in model.blocks:
-                block.adaLN_mod[-1].weight.fill_(0.01)
+                torch.nn.init.normal_(block.adaLN_mod[-1].weight, std=1.0)
 
         z    = torch.randn(B, L, D_S)
         pair = torch.randn(B, L, L, D_P)

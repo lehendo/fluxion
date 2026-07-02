@@ -85,6 +85,9 @@ def main() -> None:
                          help="Comma-separated protein IDs (default: all found)")
     parser.add_argument("--n-batches", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=16)
+    parser.add_argument("--num-workers", type=int, default=4,
+                         help="DataLoader worker processes (default 4; lower this on "
+                              "memory-constrained nodes)")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -96,7 +99,7 @@ def main() -> None:
         dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=args.num_workers,
         collate_fn=collate_fn,
         drop_last=True,
     )
