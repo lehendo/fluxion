@@ -63,14 +63,21 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float 
 
 def get_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
     """
-    Exclude 1-D parameters (biases, LayerNorm weight/bias) from weight decay.
-    Applying L2 penalty to these harms training without regularization benefit.
+    Exclude from weight decay:
+      - 1-D parameters (biases, LayerNorm weight/bias) — applying L2 penalty
+        to these harms training without regularization benefit.
+      - AdaLN-zero modulation weights ("adaLN_mod" in the param name) — these
+        start at exactly zero by design and only grow as the model learns to
+        use pair/timestep conditioning at all. Weight decay pulls them back
+        toward zero every step, directly fighting that emergence; standard
+        DiT training recipes exclude this pathway from decay for the same
+        reason.
     """
     decay, no_decay = [], []
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if param.ndim <= 1 or name.endswith(".bias"):
+        if param.ndim <= 1 or name.endswith(".bias") or "adaLN_mod" in name:
             no_decay.append(param)
         else:
             decay.append(param)
@@ -78,6 +85,36 @@ def get_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
         {"params": decay,    "weight_decay": weight_decay},
         {"params": no_decay, "weight_decay": 0.0},
     ]
+
+
+def compute_group_grad_norms(model: torch.nn.Module) -> dict[str, float]:
+    """
+    Must be called after loss.backward() and before optimizer.zero_grad().
+
+    Splits the L2 gradient norm into two groups:
+      "total_grad_norm": every parameter's gradient — this is the same
+          quantity torch.nn.utils.clip_grad_norm_ measures pre-clip.
+      "gate_grad_norm": only the AdaLN-zero gate/final-projection parameters
+          (those that start at exactly zero) — the ones that must "wake up"
+          for the model to use pair/timestep conditioning at all. If this
+          stays near-zero relative to total_grad_norm across many steps, the
+          global clip (a single L2 budget shared across all ~40M params) is
+          likely starving these parameters of any effective update, even
+          though gradients are technically reaching them.
+    """
+    total_sq = 0.0
+    gate_sq = 0.0
+    for name, param in model.named_parameters():
+        if param.grad is None:
+            continue
+        sq = param.grad.detach().double().pow(2).sum().item()
+        total_sq += sq
+        if "adaLN_mod" in name or "final_layer.linear" in name:
+            gate_sq += sq
+    return {
+        "total_grad_norm": total_sq ** 0.5,
+        "gate_grad_norm": gate_sq ** 0.5,
+    }
 
 
 def warmup_lambda(step: int, warmup_steps: int) -> float:
@@ -177,7 +214,7 @@ def main(args: argparse.Namespace) -> None:
     loss_log_path = Path(args.scratch_dir) / "loss_log.csv"
     if global_rank == 0 and not loss_log_path.exists():
         with open(loss_log_path, "w") as f:
-            f.write("step,epoch,loss,lr\n")
+            f.write("step,epoch,loss,lr,total_grad_norm,gate_grad_norm\n")
 
     for epoch in range(start_epoch, args.epochs):
         sampler.set_epoch(epoch)
@@ -207,6 +244,13 @@ def main(args: argparse.Namespace) -> None:
                 loss = matcher.compute_loss(model, z0, z1, pair, padding_mask)
 
             loss.backward()
+
+            # Measured pre-clip so gate_grad_norm reflects the natural,
+            # unclipped gradient reaching the AdaLN-zero parameters — the
+            # signal we actually care about diagnosing, not what's left of
+            # it after the global clip has already rescaled everything.
+            grad_norms = compute_group_grad_norms(model)
+
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
             scheduler.step()
@@ -218,11 +262,16 @@ def main(args: argparse.Namespace) -> None:
                 lr_now = scheduler.get_last_lr()[0]
                 loss_val = loss.item()
                 print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss_val:.4f} | LR: {lr_now:.2e}",
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_val:.4f} | LR: {lr_now:.2e} | "
+                    f"GradNorm: {grad_norms['total_grad_norm']:.4f} | "
+                    f"GateGradNorm: {grad_norms['gate_grad_norm']:.6f}",
                     flush=True,
                 )
                 with open(loss_log_path, "a") as f:
-                    f.write(f"{step},{epoch},{loss_val:.6f},{lr_now:.2e}\n")
+                    f.write(
+                        f"{step},{epoch},{loss_val:.6f},{lr_now:.2e},"
+                        f"{grad_norms['total_grad_norm']:.6f},{grad_norms['gate_grad_norm']:.8f}\n"
+                    )
 
             if (args.checkpoint_interval > 0
                     and step % args.checkpoint_interval == 0
@@ -231,6 +280,23 @@ def main(args: argparse.Namespace) -> None:
                     checkpoint_dir, step, epoch,
                     model.module, ema_model, optimizer, scheduler,
                 )
+
+            # Diagnostic/short-run cap — checkpoint and exit cleanly once the
+            # requested step count is hit, same graceful-exit pattern as the
+            # SIGUSR1 preemption handler. Lets a quick instrumentation run
+            # (e.g. a few thousand steps) be validated cheaply before
+            # committing to a full multi-day run.
+            if args.max_steps > 0 and step >= args.max_steps:
+                if global_rank == 0:
+                    save_checkpoint(
+                        checkpoint_dir, step, epoch,
+                        model.module, ema_model, optimizer, scheduler,
+                    )
+                    print(f"Reached --max-steps={args.max_steps}. Exiting at step {step}.",
+                          flush=True)
+                dist.barrier()
+                dist.destroy_process_group()
+                sys.exit(0)
 
         # End-of-epoch checkpoint (rank 0 only)
         if global_rank == 0:
@@ -255,5 +321,9 @@ if __name__ == "__main__":
                         help="Comma-separated protein IDs to include (default: all)")
     parser.add_argument("--checkpoint-interval", type=int,   default=0,
                         help="Save checkpoint every N steps (0 = off, use for scavenger)")
+    parser.add_argument("--max-steps", type=int, default=0,
+                        help="Checkpoint and exit after this many total steps "
+                             "(0 = unlimited, run full --epochs). Use for short "
+                             "diagnostic runs.")
     args = parser.parse_args()
     main(args)
