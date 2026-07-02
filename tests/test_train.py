@@ -38,46 +38,75 @@ def _tiny_model() -> FluxionDiT:
 
 
 class TestGetParamGroups:
-    def test_splits_into_two_groups(self):
+    """Param groups are [decay, no_decay, gate] — see get_param_groups docstring."""
+
+    def test_splits_into_three_groups(self):
         model = _tiny_model()
-        groups = get_param_groups(model, weight_decay=0.01)
-        assert len(groups) == 2
-        assert groups[0]["weight_decay"] == 0.01
-        assert groups[1]["weight_decay"] == 0.0
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
+        assert len(groups) == 3
+        assert groups[0]["weight_decay"] == 0.01   # decay
+        assert groups[1]["weight_decay"] == 0.0    # no_decay
+        assert groups[2]["weight_decay"] == 0.0    # gate
 
     def test_covers_every_trainable_param_exactly_once(self):
         model = _tiny_model()
-        groups = get_param_groups(model, weight_decay=0.01)
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
         grouped_ids = {id(p) for g in groups for p in g["params"]}
         model_ids = {id(p) for p in model.parameters() if p.requires_grad}
         assert grouped_ids == model_ids
+        # and no double-counting
+        total = sum(len(g["params"]) for g in groups)
+        assert total == sum(1 for p in model.parameters() if p.requires_grad)
 
-    def test_1d_params_excluded_from_decay(self):
+    def test_1d_non_gate_params_excluded_from_decay(self):
         model = _tiny_model()
-        groups = get_param_groups(model, weight_decay=0.01)
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
         no_decay_ids = {id(p) for p in groups[1]["params"]}
         for name, param in model.named_parameters():
-            if param.ndim <= 1 or name.endswith(".bias"):
+            is_gate = "adaLN_mod" in name or "final_layer.linear" in name
+            if not is_gate and (param.ndim <= 1 or name.endswith(".bias")):
                 assert id(param) in no_decay_ids, f"{name} should have no weight decay"
 
-    def test_adaLN_mod_weight_excluded_from_decay(self):
-        """AdaLN-zero modulation weights start at exactly zero and only grow
-        as the model learns to use conditioning — weight decay must not
-        fight that emergence."""
+    def test_gate_group_membership(self):
+        """Gate group = every AdaLN-zero modulation param (weight+bias) in
+        every block and final_layer, plus final_layer's own output
+        projection weight+bias."""
         model = _tiny_model()
-        groups = get_param_groups(model, weight_decay=0.01)
-        no_decay_ids = {id(p) for p in groups[1]["params"]}
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
+        gate_ids = {id(p) for p in groups[2]["params"]}
 
-        assert id(model.final_layer.adaLN_mod[-1].weight) in no_decay_ids
+        assert id(model.final_layer.adaLN_mod[-1].weight) in gate_ids
+        assert id(model.final_layer.adaLN_mod[-1].bias) in gate_ids
+        assert id(model.final_layer.linear.weight) in gate_ids
+        assert id(model.final_layer.linear.bias) in gate_ids
         for block in model.blocks:
-            assert id(block.adaLN_mod[-1].weight) in no_decay_ids
+            assert id(block.adaLN_mod[-1].weight) in gate_ids
+            assert id(block.adaLN_mod[-1].bias) in gate_ids
+
+    def test_gate_group_has_no_weight_decay(self):
+        model = _tiny_model()
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
+        assert groups[2]["weight_decay"] == 0.0
+
+    def test_gate_group_gets_multiplied_lr(self):
+        model = _tiny_model()
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
+        assert groups[0]["lr"] == pytest.approx(1e-4)
+        assert groups[1]["lr"] == pytest.approx(1e-4)
+        assert groups[2]["lr"] == pytest.approx(1e-3)   # 10x base
+
+    def test_gate_lr_multiplier_of_one_matches_base(self):
+        model = _tiny_model()
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=1.0)
+        assert groups[2]["lr"] == pytest.approx(groups[0]["lr"])
 
     def test_regular_2d_weights_still_decayed(self):
         model = _tiny_model()
-        groups = get_param_groups(model, weight_decay=0.01)
+        groups = get_param_groups(model, weight_decay=0.01, lr=1e-4, gate_lr_multiplier=10.0)
         decay_ids = {id(p) for p in groups[0]["params"]}
         assert id(model.input_proj.weight) in decay_ids
-        assert id(model.final_layer.linear.weight) in decay_ids
+        # final_layer.linear.weight is now in the gate group, not decay
+        assert id(model.final_layer.linear.weight) not in decay_ids
 
 
 class TestComputeGroupGradNorms:
@@ -126,6 +155,54 @@ class TestComputeGroupGradNorms:
         expected = manual_sq ** 0.5
 
         assert norms["gate_grad_norm"] == pytest.approx(expected, rel=1e-9)
+
+
+class TestOptimizerSchedulerIntegration:
+    """Confirms get_param_groups' per-group LR ratio survives being wired
+    into a real AdamW + LambdaLR warmup, matching exactly how main() builds
+    the optimizer."""
+
+    def test_lr_ratio_preserved_through_warmup(self):
+        model = _tiny_model()
+        base_lr, multiplier, warmup_steps = 1e-4, 10.0, 100
+
+        optimizer = torch.optim.AdamW(
+            get_param_groups(model, weight_decay=1e-5, lr=base_lr,
+                              gate_lr_multiplier=multiplier),
+            lr=base_lr, betas=(0.9, 0.999), eps=1e-8,
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda step: warmup_lambda(step, warmup_steps),
+        )
+
+        for _ in range(37):  # partway through warmup
+            optimizer.step()
+            scheduler.step()
+
+        decay_lr, no_decay_lr, gate_lr = scheduler.get_last_lr()
+        assert decay_lr == pytest.approx(no_decay_lr)
+        assert gate_lr == pytest.approx(decay_lr * multiplier, rel=1e-6)
+
+    def test_lr_ratio_preserved_after_warmup(self):
+        model = _tiny_model()
+        base_lr, multiplier, warmup_steps = 1e-4, 10.0, 50
+
+        optimizer = torch.optim.AdamW(
+            get_param_groups(model, weight_decay=1e-5, lr=base_lr,
+                              gate_lr_multiplier=multiplier),
+            lr=base_lr, betas=(0.9, 0.999), eps=1e-8,
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer, lr_lambda=lambda step: warmup_lambda(step, warmup_steps),
+        )
+
+        for _ in range(200):  # well past warmup
+            optimizer.step()
+            scheduler.step()
+
+        decay_lr, _, gate_lr = scheduler.get_last_lr()
+        assert decay_lr == pytest.approx(base_lr)
+        assert gate_lr == pytest.approx(base_lr * multiplier, rel=1e-6)
 
 
 class TestWarmupLambda:

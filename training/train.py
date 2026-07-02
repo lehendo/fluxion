@@ -61,29 +61,54 @@ def update_ema(ema_model: torch.nn.Module, model: torch.nn.Module, decay: float 
             ema_params[name].mul_(decay).add_(param.data, alpha=1.0 - decay)
 
 
-def get_param_groups(model: torch.nn.Module, weight_decay: float) -> list[dict]:
+def get_param_groups(
+    model: torch.nn.Module,
+    weight_decay: float,
+    lr: float,
+    gate_lr_multiplier: float = 1.0,
+) -> list[dict]:
     """
-    Exclude from weight decay:
-      - 1-D parameters (biases, LayerNorm weight/bias) — applying L2 penalty
-        to these harms training without regularization benefit.
-      - AdaLN-zero modulation weights ("adaLN_mod" in the param name) — these
-        start at exactly zero by design and only grow as the model learns to
-        use pair/timestep conditioning at all. Weight decay pulls them back
-        toward zero every step, directly fighting that emergence; standard
-        DiT training recipes exclude this pathway from decay for the same
-        reason.
+    Three groups:
+      - "decay":    regular >=2D weights (attention/FFN/projections), with
+                    weight decay, at the base learning rate.
+      - "no_decay": remaining 1-D params (biases), no weight decay, at the
+                    base learning rate.
+      - "gate":     every zero-initialized "wake-up" parameter — the AdaLN-
+                    zero modulation weight+bias in every block and in
+                    final_layer, plus final_layer's own output-projection
+                    weight+bias — no weight decay, at
+                    gate_lr_multiplier * base learning rate.
+
+    Why the gate group needs its own (higher) LR
+    -----------------------------------------------
+    Every block computes x = x + gate * f(x), where f is attention or FFN.
+    The gradient reaching f's OWN internal parameters is scaled by gate's
+    CURRENT value (chain rule through the multiplication) — while gate ~ 0,
+    those parameters get essentially no usable signal. final_layer.linear
+    plays the same throttling role for the ENTIRE stack: its still-small
+    weight multiplies the gradient flowing backward into every earlier
+    block, including their gates. But the gate/final-projection parameters
+    themselves receive gradient through a DIFFERENT, undiminished path (as
+    an outer multiplier on f(x)/norm(x), not gated by their own value) — so
+    they can, and empirically do, learn on their own regardless of how
+    starved the rest of the network is. Giving them a higher LR accelerates
+    them past this cold-start bottleneck without over-accelerating the rest
+    of the network's still mostly noise-dominated gradient.
     """
-    decay, no_decay = [], []
+    decay, no_decay, gate = [], [], []
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-        if param.ndim <= 1 or name.endswith(".bias") or "adaLN_mod" in name:
+        if "adaLN_mod" in name or "final_layer.linear" in name:
+            gate.append(param)
+        elif param.ndim <= 1 or name.endswith(".bias"):
             no_decay.append(param)
         else:
             decay.append(param)
     return [
-        {"params": decay,    "weight_decay": weight_decay},
-        {"params": no_decay, "weight_decay": 0.0},
+        {"params": decay,    "weight_decay": weight_decay, "lr": lr},
+        {"params": no_decay, "weight_decay": 0.0,           "lr": lr},
+        {"params": gate,     "weight_decay": 0.0,           "lr": lr * gate_lr_multiplier},
     ]
 
 
@@ -95,12 +120,16 @@ def compute_group_grad_norms(model: torch.nn.Module) -> dict[str, float]:
       "total_grad_norm": every parameter's gradient — this is the same
           quantity torch.nn.utils.clip_grad_norm_ measures pre-clip.
       "gate_grad_norm": only the AdaLN-zero gate/final-projection parameters
-          (those that start at exactly zero) — the ones that must "wake up"
-          for the model to use pair/timestep conditioning at all. If this
-          stays near-zero relative to total_grad_norm across many steps, the
-          global clip (a single L2 budget shared across all ~40M params) is
-          likely starving these parameters of any effective update, even
-          though gradients are technically reaching them.
+          (those that start at exactly zero — see get_param_groups for why).
+
+    If gate_grad_norm is a substantial fraction of (or roughly equal to)
+    total_grad_norm, that means the OPPOSITE of what "starved gates" would
+    look like: virtually all gradient signal is concentrated in the gates,
+    and the rest of the network (attention/FFN internals) is what's
+    starved — because their gradient is chain-rule-multiplied by the still-
+    tiny gate value that sits between them and the loss. This was confirmed
+    empirically on this model (2026-07): gate_grad_norm tracked
+    total_grad_norm almost exactly at every logged step.
     """
     total_sq = 0.0
     gate_sq = 0.0
@@ -146,7 +175,7 @@ def main(args: argparse.Namespace) -> None:
     ema_model = deepcopy(model).requires_grad_(False)
 
     optimizer = torch.optim.AdamW(
-        get_param_groups(model, args.weight_decay),
+        get_param_groups(model, args.weight_decay, args.lr, args.gate_lr_multiplier),
         lr=args.lr,
         betas=(0.9, 0.999),
         eps=1e-8,
@@ -214,7 +243,7 @@ def main(args: argparse.Namespace) -> None:
     loss_log_path = Path(args.scratch_dir) / "loss_log.csv"
     if global_rank == 0 and not loss_log_path.exists():
         with open(loss_log_path, "w") as f:
-            f.write("step,epoch,loss,lr,total_grad_norm,gate_grad_norm\n")
+            f.write("step,epoch,loss,lr,gate_lr,total_grad_norm,gate_grad_norm\n")
 
     for epoch in range(start_epoch, args.epochs):
         sampler.set_epoch(epoch)
@@ -259,17 +288,20 @@ def main(args: argparse.Namespace) -> None:
             step += 1
 
             if global_rank == 0 and step % args.log_interval == 0:
-                lr_now = scheduler.get_last_lr()[0]
+                # Param groups are [decay, no_decay, gate] — see get_param_groups.
+                lr_now      = scheduler.get_last_lr()[0]
+                gate_lr_now = scheduler.get_last_lr()[2]
                 loss_val = loss.item()
                 print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss_val:.4f} | LR: {lr_now:.2e} | "
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_val:.4f} | "
+                    f"LR: {lr_now:.2e} | GateLR: {gate_lr_now:.2e} | "
                     f"GradNorm: {grad_norms['total_grad_norm']:.4f} | "
                     f"GateGradNorm: {grad_norms['gate_grad_norm']:.6f}",
                     flush=True,
                 )
                 with open(loss_log_path, "a") as f:
                     f.write(
-                        f"{step},{epoch},{loss_val:.6f},{lr_now:.2e},"
+                        f"{step},{epoch},{loss_val:.6f},{lr_now:.2e},{gate_lr_now:.2e},"
                         f"{grad_norms['total_grad_norm']:.6f},{grad_norms['gate_grad_norm']:.8f}\n"
                     )
 
@@ -313,6 +345,11 @@ if __name__ == "__main__":
     parser.add_argument("--scratch-dir",    type=str,   required=True)
     parser.add_argument("--batch-size",     type=int,   default=8)
     parser.add_argument("--lr",             type=float, default=1e-4)
+    parser.add_argument("--gate-lr-multiplier", type=float, default=10.0,
+                        help="LR multiplier for AdaLN-zero gate/final-projection "
+                             "params, which sit behind a self-throttling multiplicative "
+                             "bottleneck and need to grow faster than the rest of the "
+                             "network to unblock it (default 10x base LR)")
     parser.add_argument("--weight-decay",   type=float, default=1e-5)
     parser.add_argument("--warmup-steps",   type=int,   default=2000)
     parser.add_argument("--epochs",         type=int,   default=100)
