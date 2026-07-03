@@ -3,9 +3,9 @@
 #SBATCH --partition=secondary
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=01:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/posmean_%j.out
 #SBATCH --error=logs/posmean_%j.err
 
@@ -21,4 +21,4 @@ python scripts/compute_position_mean_baseline.py \
     --latents-dir /scratch/arjunc4/fluxion_data/latents \
     --proteins    "$PILOT_PROTEINS" \
     --batch-size  256 \
-    --num-workers 4
+    --num-workers 6

@@ -71,13 +71,24 @@ def compute_position_mean_baseline(
     num_workers: int = 2,
 ) -> dict[str, float]:
     """
-    Two-pass, full-coverage computation over a single protein's dataset:
-      pass 1: per-position mean of u_t = z1 - z0, and the zero-baseline MSE
-      pass 2: MSE of predicting that fixed per-position mean instead of zero
+    Single-pass, full-coverage computation over a single protein's dataset.
 
-    Both use the SAME underlying (z0, z1) pairs the model trains on
-    (replica-safe pairing, normalization already applied if the dataset was
-    built with norm_stats).
+    Uses the standard sum-of-squares decomposition to get the position-mean
+    MSE without a second pass over the data:
+
+        sum((u_i - mean)^2) = sum(u_i^2) - n * mean^2
+                             = sum(u_i^2) - (sum(u_i))^2 / n
+
+    So accumulating sum(u) and sum(u^2) in one pass is enough to compute both
+    the zero-baseline MSE (from sum(u^2) alone) and the position-mean MSE
+    (from the identity above) — no need to revisit the data with the mean
+    already known. Halves runtime on real cluster-scale latent stores (tens
+    of thousands of frames, HDF5 decompression-bound) versus a naive
+    compute-mean-then-compute-residual two-pass approach.
+
+    Uses the exact same (z0, z1) pairs the model trains on (replica-safe
+    pairing, normalization already applied if the dataset was built with
+    norm_stats).
 
     Returns:
         {"zero_baseline_mse": float, "position_mean_mse": float,
@@ -103,15 +114,11 @@ def compute_position_mean_baseline(
         raise RuntimeError("Dataset produced no samples.")
 
     L, d = sum_u.shape
-    position_mean = (sum_u / n_samples).float()
     zero_baseline_mse = sum_u_sq / (n_samples * L * d)
 
-    resid_sq = 0.0
-    for z0, z1 in loader:
-        u = z1 - z0
-        resid = (u - position_mean.unsqueeze(0)).double()
-        resid_sq += resid.pow(2).sum().item()
-
+    # sum((u_i - mean)^2) = sum(u_i^2) - (sum(u_i))^2 / n, applied per
+    # position/channel and summed.
+    resid_sq = sum_u_sq - sum_u.pow(2).sum().item() / n_samples
     position_mean_mse = resid_sq / (n_samples * L * d)
 
     return {
