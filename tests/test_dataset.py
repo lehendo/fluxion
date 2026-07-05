@@ -309,6 +309,101 @@ class TestReplicaAwarePairing:
         assert z1[0, 0].item() == pytest.approx(100.0)
 
 
+class TestLagParameter:
+    """Configurable frame lag — see LatentDataset's `lag` docstring. Lets
+    training/diagnostics target a longer timescale than the native ATLAS
+    save interval without re-extracting data."""
+
+    def test_default_lag_is_one_and_unchanged(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = LatentDataset(tmp_path, "protA")
+        assert ds.lag == 1
+
+    def test_lag_pairs_frame_i_with_i_plus_lag(self, tmp_path):
+        protein = "protLag"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 4, 3, 20
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n, L, d_s, 0, 0.0)
+        _write_manifest(protein_dir, protein, [{
+            "path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n,
+            "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        lag = 5
+        ds = LatentDataset(tmp_path, protein, lag=lag)
+        assert ds.lag == lag
+        for i in range(n - lag):
+            (z0, z1), _, _ = ds[i]
+            assert z0[0, 0].item() == pytest.approx(float(i))
+            assert z1[0, 0].item() == pytest.approx(float(i + lag))
+
+    def test_frames_within_lag_of_group_end_self_pair(self, tmp_path):
+        """The last `lag` frames of a replica have no valid i+lag partner
+        within the group and must self-pair (zero target), not reach past
+        the group end."""
+        protein = "protLagEnd"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 4, 3, 10
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n, L, d_s, 0, 0.0)
+        _write_manifest(protein_dir, protein, [{
+            "path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n,
+            "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        lag = 3
+        ds = LatentDataset(tmp_path, protein, lag=lag)
+        for i in range(n - lag, n):  # last `lag` frames
+            (z0, z1), _, _ = ds[i]
+            assert torch.allclose(z0, z1), f"index {i} should self-pair (within {lag} of group end)"
+
+    def test_lag_never_crosses_replica_boundary(self, tmp_path):
+        protein = "protLagReplica"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s = 4, 3
+        n_r1, n_r2 = 10, 10
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n_r1, L, d_s, 0, 0.0)
+        _write_shard_valued(shard_dir, f"{protein}_R2_shard_000000.h5", n_r2, L, d_s, 0, 1000.0)
+        _write_manifest(protein_dir, protein, [
+            {"path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n_r1,
+             "first_idx": 0, "last_idx": n_r1 - 1},
+            {"path": f"{protein}/{protein}_R2_shard_000000.h5", "n_frames": n_r2,
+             "first_idx": 0, "last_idx": n_r2 - 1},
+        ])
+        _write_pair(protein_dir, L)
+
+        lag = 5
+        ds = LatentDataset(tmp_path, protein, lag=lag)
+        for i in range(len(ds)):
+            (z0, z1), _, _ = ds[i]
+            z0_replica = "R1" if z0[0, 0].item() < 1000 else "R2"
+            z1_replica = "R1" if z1[0, 0].item() < 1000 else "R2"
+            assert z0_replica == z1_replica, f"index {i} crossed a replica boundary with lag={lag}"
+
+    def test_lag_less_than_one_raises(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        with pytest.raises(ValueError, match="lag must be >= 1"):
+            LatentDataset(tmp_path, "protA", lag=0)
+
+    def test_repr_includes_lag(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = LatentDataset(tmp_path, "protA", lag=7)
+        assert "lag=7" in repr(ds)
+
+    def test_build_multi_protein_dataset_propagates_lag(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = build_multi_protein_dataset(tmp_path, lag=3)
+        underlying = ds.datasets[0]
+        assert underlying.lag == 3
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------

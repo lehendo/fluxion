@@ -127,3 +127,33 @@ class TestComputePositionMeanBaseline:
         result = compute_position_mean_baseline(ds, batch_size=8, num_workers=0)
 
         assert result["position_mean_mse"] <= result["zero_baseline_mse"] + 1e-6
+
+    def test_longer_lag_reveals_signal_buried_in_short_lag_noise(self, tmp_path):
+        """This is the exact mechanism scripts/sweep_lag_baseline.sh is built
+        to detect: a small constant per-step position-specific drift, buried
+        under large per-step independent noise. At lag=1 the noise dominates
+        and the drift is barely detectable; the drift accumulates linearly
+        with lag while the noise's std only grows as sqrt(lag), so a longer
+        lag should improve the drift's share of explainable variance."""
+        L, d, n = 4, 3, 2000
+        rng = np.random.default_rng(4)
+        drift = rng.standard_normal((L, d)).astype(np.float32) * 0.05   # small, per-step
+        noise_std = 2.0                                                 # large, per-step
+
+        steps = drift[None, :, :] + rng.standard_normal((n - 1, L, d)).astype(np.float32) * noise_std
+        frames = np.concatenate([np.zeros((1, L, d), dtype=np.float32), np.cumsum(steps, axis=0)])
+        _write_protein_with_frames(tmp_path, "protBuriedDrift", frames)
+
+        ds_short = LatentDataset(tmp_path, "protBuriedDrift", lag=1)
+        ds_long  = LatentDataset(tmp_path, "protBuriedDrift", lag=20)
+
+        result_short = compute_position_mean_baseline(ds_short, batch_size=64, num_workers=0)
+        result_long  = compute_position_mean_baseline(ds_long,  batch_size=64, num_workers=0)
+
+        reduction_short = 1 - result_short["position_mean_mse"] / result_short["zero_baseline_mse"]
+        reduction_long  = 1 - result_long["position_mean_mse"]  / result_long["zero_baseline_mse"]
+
+        assert reduction_long > reduction_short, (
+            f"longer lag should reveal more of the buried drift signal: "
+            f"lag=1 reduction={reduction_short:.4f}, lag=20 reduction={reduction_long:.4f}"
+        )

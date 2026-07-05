@@ -31,7 +31,13 @@ per-position static information) — so it's a clean, cheap upper-bound probe:
 Usage:
     python scripts/compute_position_mean_baseline.py \
         --latents-dir /scratch/arjunc4/fluxion_data/latents \
-        --proteins    "$PILOT_PROTEINS"
+        --proteins    "$PILOT_PROTEINS" \
+        --lag         1
+
+--lag sweeps the frame offset between z0/z1 (default 1 = native ATLAS
+10ps/frame stride). See scripts/sweep_lag_baseline.sh to run this across many
+lag values in parallel SLURM array tasks, and
+scripts/summarize_lag_sweep.py to collect the results into one table.
 """
 
 from __future__ import annotations
@@ -136,6 +142,9 @@ def main() -> None:
                          help="Comma-separated protein IDs (default: all found)")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--lag", type=int, default=1,
+                         help="Frame offset between z0/z1 (default 1 = native "
+                              "ATLAS 10ps/frame stride)")
     args = parser.parse_args()
 
     protein_ids = [p.strip() for p in args.proteins.split(",")] if args.proteins else None
@@ -159,6 +168,8 @@ def main() -> None:
     total_mean_sq = 0.0
     total_n = 0
 
+    print(f"[posmean] lag={args.lag} frames ({args.lag * 10}ps at native ATLAS stride)",
+          flush=True)
     header = f"{'Protein':<14} {'ZeroMSE':>12} {'PosMeanMSE':>12} {'%Reduction':>12} {'N':>10}"
     print(header, flush=True)
     print("-" * len(header), flush=True)
@@ -169,6 +180,7 @@ def main() -> None:
         # nothing — see _collate_no_pair.
         protein_dataset = LatentDataset(
             args.latents_dir, protein_id, load_pair=False, norm_stats=norm_stats,
+            lag=args.lag,
         )
 
         result = compute_position_mean_baseline(

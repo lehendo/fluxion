@@ -65,6 +65,16 @@ class LatentDataset(Dataset):
                       produced by data_pipeline/compute_norm_stats.py). If
                       given, z0/z1 are returned as (x - mean) / std instead of
                       raw Chai-1 latent scale.
+        lag:          Frame offset between z0 and z1 (default 1 = adjacent
+                      frames, i.e. one native ATLAS save interval, 10ps).
+                      z1 is drawn from index i+lag within the SAME replica
+                      group as z0. At native 10ps/frame stride, single-step
+                      (lag=1) displacement was found to carry ~0% explainable
+                      signal beyond thermal noise (position-mean baseline,
+                      2026-07-03 pilot) — this parameter exists to let
+                      training and diagnostics target a longer, more dynamics-
+                      relevant timescale without re-extracting any data, since
+                      every frame was already extracted independently.
     """
 
     def __init__(
@@ -73,10 +83,14 @@ class LatentDataset(Dataset):
         protein_name: str,
         load_pair: bool = True,
         norm_stats: dict[str, torch.Tensor] | None = None,
+        lag: int = 1,
     ) -> None:
+        if lag < 1:
+            raise ValueError(f"lag must be >= 1, got {lag}")
         self.data_dir = Path(data_dir)
         self.protein_name = protein_name
         self.load_pair = load_pair
+        self.lag = lag
         self.norm_mean = norm_stats["mean"].float() if norm_stats is not None else None
         self.norm_std  = norm_stats["std"].float()  if norm_stats is not None else None
 
@@ -111,9 +125,10 @@ class LatentDataset(Dataset):
         # index_map: flat (shard_path, local_idx) for every frame, laid out
         # replica group by replica group, each group internally ordered by
         # shard index. _next_idx[i] gives the index_map position to use as
-        # the z1 partner for position i — normally i+1, but at the last frame
-        # of each replica group it wraps back to i itself (zero target
-        # velocity) instead of reaching into the next, unrelated group.
+        # the z1 partner for position i — normally i+lag, but within `lag`
+        # frames of the end of each replica group it wraps back to i itself
+        # (zero target velocity) instead of reaching into the next, unrelated
+        # group.
         self.index_map: list[tuple[Path, int]] = []
         self._next_idx: list[int] = []
         for rep_key in sorted(groups):
@@ -127,7 +142,7 @@ class LatentDataset(Dataset):
                     self.index_map.append((shard_path, local_idx))
             group_end = len(self.index_map)
             for i in range(group_start, group_end):
-                self._next_idx.append(i + 1 if i + 1 < group_end else i)
+                self._next_idx.append(i + lag if i + lag < group_end else i)
 
         # Static pair tensor — loaded once, shared across all workers via
         # copy-on-write fork semantics. Zero per-item IO cost.
@@ -162,11 +177,11 @@ class LatentDataset(Dataset):
         self, idx: int
     ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor | None, int]:
         """
-        Returns consecutive frame pair for flow matching.
+        Returns a lagged frame pair for flow matching.
 
         Returns:
-            (single_0, single_1): float32 [L, d_single] each — frames i and i+1
-                                   (normalized if norm_stats was provided)
+            (single_0, single_1): float32 [L, d_single] each — frames i and
+                                   i+self.lag (normalized if norm_stats given)
             pair:      float32 [L, L, d_pair] from frame i, or None if load_pair=False
             frame_idx: int — original MD trajectory frame index of z0
         """
@@ -206,7 +221,7 @@ class LatentDataset(Dataset):
         return (
             f"LatentDataset(protein={self.protein_name!r}, "
             f"frames={len(self)}, shards={len(self.shards)}, "
-            f"load_pair={self.load_pair})"
+            f"load_pair={self.load_pair}, lag={self.lag})"
         )
 
 
@@ -218,6 +233,7 @@ def build_multi_protein_dataset(
     latents_dir: Union[str, Path],
     protein_ids: list[str] | None = None,
     norm_stats_path: Union[str, Path, None] = None,
+    lag: int = 1,
 ) -> ConcatDataset:
     """
     Discover all proteins in `latents_dir` that have both manifest.json and
@@ -235,6 +251,8 @@ def build_multi_protein_dataset(
     normalized data (e.g. training/train.py) must verify the file exists
     themselves before calling this, so training never silently runs
     unnormalized.
+
+    lag: frame offset between z0/z1 for every protein — see LatentDataset.
     """
     latents_dir = Path(latents_dir)
 
@@ -262,7 +280,7 @@ def build_multi_protein_dataset(
             skipped.append(protein_dir.name)
             continue
         datasets.append(LatentDataset(
-            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats,
+            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats, lag=lag,
         ))
 
     if skipped:
