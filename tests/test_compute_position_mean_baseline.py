@@ -112,8 +112,26 @@ class TestComputePositionMeanBaseline:
         ds = LatentDataset(tmp_path, "protShape")
         result = compute_position_mean_baseline(ds, batch_size=8, num_workers=0)
 
-        assert result["n_samples"] == n  # LatentDataset self-pairs the last frame
+        # LatentDataset self-pairs the last frame (no i+lag partner); that one
+        # artificial zero-displacement sample is excluded from the statistics.
+        assert result["n_samples"] == n - 1
+        assert result["n_excluded_self_pairs"] == 1
         assert result["L"] == L
+
+    def test_excludes_self_paired_samples_at_large_lag(self, tmp_path):
+        """At lag close to the trajectory length, most samples are artificial
+        self-pairs and must be excluded, not diluted into the statistics."""
+        L, d, n = 4, 3, 100
+        rng = np.random.default_rng(5)
+        frames = np.cumsum(rng.standard_normal((n, L, d)).astype(np.float32) * 0.2, axis=0)
+        _write_protein_with_frames(tmp_path, "protLagExclude", frames)
+
+        lag = 90  # only the first (n - lag) = 10 frames have a real partner
+        ds = LatentDataset(tmp_path, "protLagExclude", lag=lag)
+        result = compute_position_mean_baseline(ds, batch_size=16, num_workers=0)
+
+        assert result["n_excluded_self_pairs"] == lag
+        assert result["n_samples"] == n - lag
 
     def test_position_mean_never_worse_than_zero_by_more_than_float_noise(self, tmp_path):
         """The position mean is the least-squares-optimal constant predictor

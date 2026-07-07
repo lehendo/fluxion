@@ -94,11 +94,28 @@ def compute_position_mean_baseline(
 
     Uses the exact same (z0, z1) pairs the model trains on (replica-safe
     pairing, normalization already applied if the dataset was built with
-    norm_stats).
+    norm_stats) — EXCEPT for one deliberate exclusion, see below.
+
+    Excludes artificial self-pairs
+    -------------------------------
+    LatentDataset self-pairs frames within `lag` of each replica's tail (no
+    valid i+lag partner remains there), giving u_t = z1-z0 = 0 identically —
+    a dataset-construction artifact so every index has SOME training target,
+    not real dynamics. At lag=1 this is a negligible fraction of samples
+    (~1/N), but at large lag it is NOT negligible: at lag=N/2 fully half of
+    all samples in a replica are these artificial zero-pairs. Including them
+    here would dilute both zero_baseline_mse and position_mean_mse by the
+    same growing-with-lag factor, producing a spurious "MSE shrinks with
+    lag" trend that has nothing to do with real signal (discovered
+    2026-07-05 when a lag sweep showed exactly this artifact — the "decline"
+    was fit almost exactly by (1 - lag/N) dilution of a constant true MSE).
+    Detected via exact equality (u.abs().sum() == 0 for a sample) — real
+    continuous-valued displacements essentially never land on exactly zero
+    by chance, so this cleanly isolates only the artificial pairs.
 
     Returns:
         {"zero_baseline_mse": float, "position_mean_mse": float,
-         "n_samples": int, "L": int}
+         "n_samples": int, "n_excluded_self_pairs": int, "L": int}
     """
     loader = DataLoader(
         protein_dataset, batch_size=batch_size, shuffle=False,
@@ -108,16 +125,25 @@ def compute_position_mean_baseline(
     sum_u: torch.Tensor | None = None
     sum_u_sq = 0.0
     n_samples = 0
+    n_excluded_self_pairs = 0
     for z0, z1 in loader:
         u = (z1 - z0).double()  # [B, L, d]
         if sum_u is None:
             sum_u = torch.zeros(u.shape[1], u.shape[2], dtype=torch.float64)
+
+        valid = u.abs().sum(dim=(1, 2)) > 0
+        if not valid.all():
+            n_excluded_self_pairs += int((~valid).sum().item())
+            u = u[valid]
+        if u.shape[0] == 0:
+            continue
+
         sum_u += u.sum(dim=0)
         sum_u_sq += u.pow(2).sum().item()
         n_samples += u.shape[0]
 
     if n_samples == 0:
-        raise RuntimeError("Dataset produced no samples.")
+        raise RuntimeError("Dataset produced no non-self-paired samples.")
 
     L, d = sum_u.shape
     zero_baseline_mse = sum_u_sq / (n_samples * L * d)
@@ -131,6 +157,7 @@ def compute_position_mean_baseline(
         "zero_baseline_mse": zero_baseline_mse,
         "position_mean_mse": position_mean_mse,
         "n_samples": n_samples,
+        "n_excluded_self_pairs": n_excluded_self_pairs,
         "L": L,
     }
 
@@ -190,8 +217,10 @@ def main() -> None:
         mean_mse = result["position_mean_mse"]
         pct = (1 - mean_mse / zero_mse) * 100 if zero_mse > 0 else 0.0
         n = result["n_samples"]
+        n_excluded = result["n_excluded_self_pairs"]
 
-        print(f"{protein_id:<14} {zero_mse:>12.6f} {mean_mse:>12.6f} {pct:>11.2f}% {n:>10}",
+        print(f"{protein_id:<14} {zero_mse:>12.6f} {mean_mse:>12.6f} {pct:>11.2f}% {n:>10}"
+              + (f"  (excluded {n_excluded} self-pairs)" if n_excluded else ""),
               flush=True)
 
         total_zero_sq += zero_mse * n * result["L"]
