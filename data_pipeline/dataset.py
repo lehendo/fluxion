@@ -75,6 +75,18 @@ class LatentDataset(Dataset):
                       training and diagnostics target a longer, more dynamics-
                       relevant timescale without re-extracting any data, since
                       every frame was already extracted independently.
+        velocity_lag: If > 0, __getitem__ additionally returns z_prev — the
+                      frame `velocity_lag` steps BEFORE z0, within the same
+                      replica group — as the first element of the returned
+                      tuple, giving (z_prev, z0, z1) instead of (z0, z1).
+                      Lets a model or diagnostic condition on an explicit
+                      finite-difference velocity z0 - z_prev in addition to
+                      the current state, rather than z0 alone. Default 0
+                      disables this (identical return shape to before this
+                      parameter existed). Mirrors `lag`'s tail self-pairing:
+                      at the START of a replica, where no real previous frame
+                      exists, z_prev self-pairs to z0 (velocity = 0) rather
+                      than reaching into the previous, unrelated group.
     """
 
     def __init__(
@@ -84,13 +96,17 @@ class LatentDataset(Dataset):
         load_pair: bool = True,
         norm_stats: dict[str, torch.Tensor] | None = None,
         lag: int = 1,
+        velocity_lag: int = 0,
     ) -> None:
         if lag < 1:
             raise ValueError(f"lag must be >= 1, got {lag}")
+        if velocity_lag < 0:
+            raise ValueError(f"velocity_lag must be >= 0, got {velocity_lag}")
         self.data_dir = Path(data_dir)
         self.protein_name = protein_name
         self.load_pair = load_pair
         self.lag = lag
+        self.velocity_lag = velocity_lag
         self.norm_mean = norm_stats["mean"].float() if norm_stats is not None else None
         self.norm_std  = norm_stats["std"].float()  if norm_stats is not None else None
 
@@ -128,9 +144,12 @@ class LatentDataset(Dataset):
         # the z1 partner for position i — normally i+lag, but within `lag`
         # frames of the end of each replica group it wraps back to i itself
         # (zero target velocity) instead of reaching into the next, unrelated
-        # group.
+        # group. _prev_idx[i] is the symmetric lookup for velocity_lag: the
+        # position i-velocity_lag, wrapping to i itself within velocity_lag
+        # frames of the START of each group.
         self.index_map: list[tuple[Path, int]] = []
         self._next_idx: list[int] = []
+        self._prev_idx: list[int] = []
         for rep_key in sorted(groups):
             rep_shards = sorted(groups[rep_key], key=_shard_num)
             group_start = len(self.index_map)
@@ -143,6 +162,7 @@ class LatentDataset(Dataset):
             group_end = len(self.index_map)
             for i in range(group_start, group_end):
                 self._next_idx.append(i + lag if i + lag < group_end else i)
+                self._prev_idx.append(i - velocity_lag if i - velocity_lag >= group_start else i)
 
         # Static pair tensor — loaded once, shared across all workers via
         # copy-on-write fork semantics. Zero per-item IO cost.
@@ -173,35 +193,46 @@ class LatentDataset(Dataset):
             return x
         return (x - self.norm_mean) / self.norm_std
 
-    def __getitem__(
-        self, idx: int
-    ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor | None, int]:
-        """
-        Returns a lagged frame pair for flow matching.
+    def _get_handle(self, shard_path: Path) -> h5py.File:
+        key = str(shard_path)
+        if key not in self.file_handles:
+            self.file_handles[key] = h5py.File(key, "r")
+        return self.file_handles[key]
 
-        Returns:
+    def _load_frame(self, flat_idx: int) -> torch.Tensor:
+        """Normalized single-token tensor for a flat index_map position."""
+        shard_path, local_idx = self.index_map[flat_idx]
+        f = self._get_handle(shard_path)
+        return self._normalize(torch.from_numpy(f["single"][local_idx]).float())
+
+    def __getitem__(self, idx: int):
+        """
+        Returns a lagged frame pair for flow matching (or a velocity-augmented
+        triplet if velocity_lag > 0 — see class docstring).
+
+        Returns (velocity_lag == 0, default):
             (single_0, single_1): float32 [L, d_single] each — frames i and
                                    i+self.lag (normalized if norm_stats given)
             pair:      float32 [L, L, d_pair] from frame i, or None if load_pair=False
             frame_idx: int — original MD trajectory frame index of z0
+
+        Returns (velocity_lag > 0):
+            (single_prev, single_0, single_1): as above, plus the frame
+                                   i-self.velocity_lag
+            pair, frame_idx: as above
         """
         idx1 = self._next_idx[idx]
 
         shard_path_0, local_idx_0 = self.index_map[idx]
-        shard_path_1, local_idx_1 = self.index_map[idx1]
+        f0 = self._get_handle(shard_path_0)
 
-        def _get_handle(shard_path: Path) -> h5py.File:
-            key = str(shard_path)
-            if key not in self.file_handles:
-                self.file_handles[key] = h5py.File(key, "r")
-            return self.file_handles[key]
-
-        f0 = _get_handle(shard_path_0)
-        f1 = _get_handle(shard_path_1)
-
-        single_0  = self._normalize(torch.from_numpy(f0["single"][local_idx_0]).float())
-        single_1  = self._normalize(torch.from_numpy(f1["single"][local_idx_1]).float())
+        single_0  = self._load_frame(idx)
+        single_1  = self._load_frame(idx1)
         frame_idx = int(f0["frame_idx"][local_idx_0])
+
+        if self.velocity_lag > 0:
+            single_prev = self._load_frame(self._prev_idx[idx])
+            return (single_prev, single_0, single_1), self.static_pair, frame_idx
 
         # Static pair: already in RAM, return directly (no HDF5 read)
         return (single_0, single_1), self.static_pair, frame_idx
@@ -221,7 +252,8 @@ class LatentDataset(Dataset):
         return (
             f"LatentDataset(protein={self.protein_name!r}, "
             f"frames={len(self)}, shards={len(self.shards)}, "
-            f"load_pair={self.load_pair}, lag={self.lag})"
+            f"load_pair={self.load_pair}, lag={self.lag}, "
+            f"velocity_lag={self.velocity_lag})"
         )
 
 
@@ -234,6 +266,7 @@ def build_multi_protein_dataset(
     protein_ids: list[str] | None = None,
     norm_stats_path: Union[str, Path, None] = None,
     lag: int = 1,
+    velocity_lag: int = 0,
 ) -> ConcatDataset:
     """
     Discover all proteins in `latents_dir` that have both manifest.json and
@@ -253,6 +286,7 @@ def build_multi_protein_dataset(
     unnormalized.
 
     lag: frame offset between z0/z1 for every protein — see LatentDataset.
+    velocity_lag: optional explicit-velocity conditioning — see LatentDataset.
     """
     latents_dir = Path(latents_dir)
 
@@ -280,7 +314,8 @@ def build_multi_protein_dataset(
             skipped.append(protein_dir.name)
             continue
         datasets.append(LatentDataset(
-            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats, lag=lag,
+            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats,
+            lag=lag, velocity_lag=velocity_lag,
         ))
 
     if skipped:

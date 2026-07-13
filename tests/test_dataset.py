@@ -404,6 +404,105 @@ class TestLagParameter:
         assert underlying.lag == 3
 
 
+class TestVelocityLagParameter:
+    """Optional explicit-velocity conditioning — see LatentDataset's
+    `velocity_lag` docstring. Symmetric to `lag`'s tail self-pairing, but at
+    the START of each replica group instead of the end."""
+
+    def test_default_velocity_lag_disabled_unchanged_return_shape(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = LatentDataset(tmp_path, "protA")
+        assert ds.velocity_lag == 0
+        sample = ds[0]
+        (z0, z1), _pair, _fidx = sample
+        assert isinstance(z0, torch.Tensor) and isinstance(z1, torch.Tensor)
+
+    def test_velocity_lag_returns_triplet(self, tmp_path):
+        protein = "protVel"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 4, 3, 20
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n, L, d_s, 0, 0.0)
+        _write_manifest(protein_dir, protein, [{
+            "path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n,
+            "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        ds = LatentDataset(tmp_path, protein, velocity_lag=2)
+        assert ds.velocity_lag == 2
+        (z_prev, z0, z1), _pair, _fidx = ds[5]
+        assert z_prev[0, 0].item() == pytest.approx(3.0)  # frame 5-2=3
+        assert z0[0, 0].item() == pytest.approx(5.0)
+        assert z1[0, 0].item() == pytest.approx(6.0)       # default lag=1
+
+    def test_frames_within_velocity_lag_of_group_start_self_pair(self, tmp_path):
+        """The first `velocity_lag` frames of a replica have no valid
+        i-velocity_lag partner and must self-pair (zero velocity), not reach
+        into the previous, unrelated group."""
+        protein = "protVelStart"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 4, 3, 10
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n, L, d_s, 0, 0.0)
+        _write_manifest(protein_dir, protein, [{
+            "path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n,
+            "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        velocity_lag = 3
+        ds = LatentDataset(tmp_path, protein, velocity_lag=velocity_lag)
+        for i in range(velocity_lag):  # first `velocity_lag` frames
+            (z_prev, z0, _z1), _, _ = ds[i]
+            assert torch.allclose(z_prev, z0), (
+                f"index {i} should self-pair to zero velocity (within "
+                f"{velocity_lag} of group start)"
+            )
+
+    def test_velocity_lag_never_crosses_replica_boundary(self, tmp_path):
+        protein = "protVelReplica"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s = 4, 3
+        n_r1, n_r2 = 10, 10
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n_r1, L, d_s, 0, 0.0)
+        _write_shard_valued(shard_dir, f"{protein}_R2_shard_000000.h5", n_r2, L, d_s, 0, 1000.0)
+        _write_manifest(protein_dir, protein, [
+            {"path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n_r1,
+             "first_idx": 0, "last_idx": n_r1 - 1},
+            {"path": f"{protein}/{protein}_R2_shard_000000.h5", "n_frames": n_r2,
+             "first_idx": 0, "last_idx": n_r2 - 1},
+        ])
+        _write_pair(protein_dir, L)
+
+        ds = LatentDataset(tmp_path, protein, velocity_lag=5)
+        for i in range(len(ds)):
+            (z_prev, z0, _z1), _, _ = ds[i]
+            z_prev_replica = "R1" if z_prev[0, 0].item() < 1000 else "R2"
+            z0_replica     = "R1" if z0[0, 0].item()     < 1000 else "R2"
+            assert z_prev_replica == z0_replica, f"index {i} crossed a replica boundary"
+
+    def test_velocity_lag_less_than_zero_raises(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        with pytest.raises(ValueError, match="velocity_lag must be >= 0"):
+            LatentDataset(tmp_path, "protA", velocity_lag=-1)
+
+    def test_repr_includes_velocity_lag(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = LatentDataset(tmp_path, "protA", velocity_lag=4)
+        assert "velocity_lag=4" in repr(ds)
+
+    def test_build_multi_protein_dataset_propagates_velocity_lag(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = build_multi_protein_dataset(tmp_path, velocity_lag=2)
+        underlying = ds.datasets[0]
+        assert underlying.velocity_lag == 2
+
+
 # ---------------------------------------------------------------------------
 # Normalization
 # ---------------------------------------------------------------------------
