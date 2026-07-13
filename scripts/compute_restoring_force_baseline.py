@@ -38,38 +38,40 @@ conditioning is visible on top of what a static bias already explains
 (nothing, per the lag sweep). Excludes artificial self-pairs the same way
 compute_position_mean_baseline.py does — see that module's docstring.
 
-Interpretation
----------------
-- If restoring-force MSE is close to position-mean MSE (no further
-  reduction): z0 itself carries no LINEAR information about u_t either.
-  Combined with the flat lag-sweep result, this would be strong evidence
-  that Fluxion's OT-CFM formulation has no first-order-linear signal to
-  exploit from (z_t, pair, t) at all in this latent space — arguing for a
-  genuinely different conditioning (explicit velocity/history) rather than
-  continued tuning of the current single-snapshot setup.
-- If restoring-force MSE drops meaningfully below position-mean MSE: real,
-  state-dependent (if linear) structure exists that a model conditioning on
-  z_t could in principle learn — reopens the "this is an optimization/
-  architecture problem, not a physical floor" hypothesis with much stronger
-  justification than before.
+IMPORTANT — a confound in restoring_force_mse, and the fix
+-------------------------------------------------------------
+u = z1 - z0 mechanically CONTAINS "-z0" as a term. Regressing u on z0
+therefore hits a MECHANICAL ceiling of exactly 50% "reduction" under TRUE
+INDEPENDENCE (z0, z1 uncorrelated) — not just under genuine restoring-force
+dynamics. Worse: a "perfect, instantaneous restoring force" (system fully
+resets to equilibrium every single lag step) is mathematically IDENTICAL to
+independence, so restoring_force_mse alone cannot tell real fast dynamics
+apart from pure memorylessness — both land at 50%. (Discovered 2026-07-12:
+every one of 14 pilot proteins landed at 49.95-50.24%, an implausibly tight
+cluster for real biological variation — the signature of hitting this
+mechanical ceiling, not of measuring real per-protein dynamics.)
 
-A subtlety that matters for reading the real result correctly
------------------------------------------------------------------
-u = z1 - z0 mechanically CONTAINS "-z0" as a term, so regressing u on z0
-picks up a baseline negative correlation even under a NULL model with zero
-restoring force — but only if z0 and z1 are independent. For our actual
-regime (highly autocorrelated positions, rho = Corr(z0,z1) very close to 1 —
-consistent with the tiny Var(u_t) already measured), a pure random walk
-z1 = z0 + independent_noise (no restoring force at all) gives Cov(u,z0) =
-Cov(noise,z0) = 0 exactly, so this mechanical effect vanishes in the
-high-rho regime that actually applies here. It only becomes large for LOW
-autocorrelation (e.g. testing against literally independent frames, which is
-NOT representative of this data and would overstate "signal" spuriously —
-tests in tests/test_compute_restoring_force_baseline.py validate against a
-proper random-walk null, not i.i.d. frames, for exactly this reason). At the
-already-measured rho for lag=1 (~0.9996), the expected mechanical reduction
-under a TRUE null is (1-rho)/2 ~ 0.02% — negligible. A measured reduction
-much larger than that is real signal, not this artifact.
+The fix: z1_predictability_mse regresses z1 DIRECTLY on z0 (not u = z1-z0 on
+z0), which has no such self-inclusion term. Reduction vs. z1_variance_mse
+(predicting z1 by its own mean) is exactly rho^2, the squared correlation
+between z0 and z1 — 0% at true independence, growing only with genuine
+retained information. THIS is the number that actually answers "does the
+current state predict the future state," unconfounded. Derived from the
+same sufficient statistics already collected for restoring_force_mse, no
+extra data pass needed.
+
+Interpretation (use z1_predictability_mse / z1_variance_mse, not
+restoring_force_mse / position_mean_mse, for the real verdict)
+-------------------------------------------------------------------
+- If the z1-predictability reduction is close to 0%: z0 carries no linear
+  information about z1 at all — full memorylessness at this lag. Combined
+  with the flat lag-sweep result, this is strong evidence Fluxion's OT-CFM
+  formulation has no first-order-linear signal to exploit from (z_t, pair, t)
+  in this latent space at any tested timescale — arguing for a genuinely
+  different conditioning (explicit velocity/history, or a different
+  representation) rather than continued tuning of the current setup.
+- If it's meaningfully positive: real, state-dependent linear structure
+  exists that a model conditioning on z_t could in principle learn.
 
 Usage:
     python scripts/compute_restoring_force_baseline.py \
@@ -110,11 +112,15 @@ def compute_restoring_force_baseline(
 ) -> dict[str, float]:
     """
     Single-pass computation of the best per-(position, channel) linear fit
-    of u_t = z1 - z0 against z0 — see module docstring for the OLS algebra.
+    of u_t = z1 - z0 against z0, AND the unconfounded z0->z1 predictability
+    check — see module docstring for the OLS algebra and why both are
+    reported (restoring_force_mse alone is confounded; z1_predictability_mse
+    is the one to actually read).
 
     Returns:
         {"zero_baseline_mse": float, "position_mean_mse": float,
-         "restoring_force_mse": float, "n_samples": int,
+         "restoring_force_mse": float, "z1_variance_mse": float,
+         "z1_predictability_mse": float, "n_samples": int,
          "n_excluded_self_pairs": int, "L": int}
     """
     loader = DataLoader(
@@ -182,10 +188,37 @@ def compute_restoring_force_baseline(
     restoring_force_resid = (ss_u - explained).clamp(min=0.0)  # numerical safety
     restoring_force_mse = restoring_force_resid.sum().item() / (n * L * d)
 
+    # --- Unconfounded predictability check ---
+    # regressing u = z1 - z0 on z0 hits a mechanical 50% "reduction" ceiling
+    # under TRUE independence (z0, z1 uncorrelated), because u mechanically
+    # contains "-z0" as a term — see module docstring. That makes
+    # restoring_force_mse ABOVE unable to distinguish "genuine fast
+    # mean-reversion" from "no memory at all." Sidestep this entirely by
+    # regressing z1 directly on z0 instead of regressing u on z0 — this
+    # gives exactly rho^2 (squared correlation) with NO such artifact: 0%
+    # at true independence, growing only with genuine retained information.
+    # Derived from the SAME sufficient statistics already collected above
+    # (z1 = z0 + u), no second pass over the data needed.
+    sum_z1    = sum_z0 + sum_u
+    sum_z1_sq = sum_z0_sq + 2 * sum_uz0 + sum_u_sq
+    sum_z0z1  = sum_z0_sq + sum_uz0
+
+    ss_z1   = sum_z1_sq - sum_z1.pow(2) / n       # n * Var(z1), per (l,c)
+    sp_z0z1 = sum_z0z1  - (sum_z0 * sum_z1) / n    # n * Cov(z0,z1), per (l,c)
+
+    z1_variance_mse = ss_z1.sum().item() / (n * L * d)  # baseline: predict z1 by its own mean
+
+    z1_explained = sp_z0z1.pow(2) / safe_ss_z0
+    z1_explained[zero_var_mask] = 0.0
+    z1_predict_resid = (ss_z1 - z1_explained).clamp(min=0.0)
+    z1_predictability_mse = z1_predict_resid.sum().item() / (n * L * d)
+
     return {
         "zero_baseline_mse": zero_baseline_mse,
         "position_mean_mse": position_mean_mse,
         "restoring_force_mse": restoring_force_mse,
+        "z1_variance_mse": z1_variance_mse,
+        "z1_predictability_mse": z1_predictability_mse,
         "n_samples": n_samples,
         "n_excluded_self_pairs": n_excluded_self_pairs,
         "L": L,
@@ -223,12 +256,17 @@ def main() -> None:
     total_zero_sq  = 0.0
     total_mean_sq  = 0.0
     total_force_sq = 0.0
+    total_z1var_sq  = 0.0
+    total_z1pred_sq = 0.0
     total_n = 0
 
     print(f"[restoring] lag={args.lag} frames ({args.lag * 10}ps at native ATLAS stride)",
           flush=True)
+    print("[restoring] NOTE: %vsPosMean (from u=z1-z0 regressed on z0) is confounded — "
+          "see module docstring. Read %z1Predict (unconfounded, = rho^2) for the real answer.",
+          flush=True)
     header = (f"{'Protein':<14} {'ZeroMSE':>12} {'PosMeanMSE':>12} {'RestoringMSE':>14} "
-              f"{'%vsZero':>10} {'%vsPosMean':>12} {'N':>10}")
+              f"{'%vsPosMean':>12} {'%z1Predict':>12} {'N':>10}")
     print(header, flush=True)
     print("-" * len(header), flush=True)
 
@@ -243,39 +281,48 @@ def main() -> None:
         zero_mse  = result["zero_baseline_mse"]
         mean_mse  = result["position_mean_mse"]
         force_mse = result["restoring_force_mse"]
+        z1var_mse  = result["z1_variance_mse"]
+        z1pred_mse = result["z1_predictability_mse"]
         n = result["n_samples"]
         n_excluded = result["n_excluded_self_pairs"]
 
-        pct_vs_zero = (1 - force_mse / zero_mse) * 100 if zero_mse > 0 else 0.0
         pct_vs_mean = (1 - force_mse / mean_mse) * 100 if mean_mse > 0 else 0.0
+        pct_z1predict = (1 - z1pred_mse / z1var_mse) * 100 if z1var_mse > 0 else 0.0
 
         print(f"{protein_id:<14} {zero_mse:>12.6f} {mean_mse:>12.6f} {force_mse:>14.6f} "
-              f"{pct_vs_zero:>9.2f}% {pct_vs_mean:>11.2f}% {n:>10}"
+              f"{pct_vs_mean:>11.2f}% {pct_z1predict:>11.2f}% {n:>10}"
               + (f"  (excluded {n_excluded})" if n_excluded else ""),
               flush=True)
 
+        total_z1var_sq  += z1var_mse  * n * result["L"]
+        total_z1pred_sq += z1pred_mse * n * result["L"]
         total_zero_sq  += zero_mse  * n * result["L"]
         total_mean_sq  += mean_mse  * n * result["L"]
         total_force_sq += force_mse * n * result["L"]
         total_n += n * result["L"]
 
     print("-" * len(header), flush=True)
-    overall_zero  = total_zero_sq  / total_n
-    overall_mean  = total_mean_sq  / total_n
-    overall_force = total_force_sq / total_n
-    overall_pct_zero = (1 - overall_force / overall_zero) * 100 if overall_zero > 0 else 0.0
-    overall_pct_mean = (1 - overall_force / overall_mean) * 100 if overall_mean > 0 else 0.0
+    overall_zero   = total_zero_sq   / total_n
+    overall_mean   = total_mean_sq   / total_n
+    overall_force  = total_force_sq  / total_n
+    overall_z1var  = total_z1var_sq  / total_n
+    overall_z1pred = total_z1pred_sq / total_n
+    overall_pct_mean     = (1 - overall_force  / overall_mean)  * 100 if overall_mean  > 0 else 0.0
+    overall_pct_z1predict = (1 - overall_z1pred / overall_z1var) * 100 if overall_z1var > 0 else 0.0
 
-    print(f"\n[summary] Aggregate zero-baseline MSE:          {overall_zero:.6f}")
-    print(f"[summary] Aggregate position-mean baseline MSE:  {overall_mean:.6f}")
-    print(f"[summary] Aggregate restoring-force baseline MSE: {overall_force:.6f}")
-    print(f"[summary] Reduction vs. zero baseline:            {overall_pct_zero:.2f}%")
-    print(f"[summary] Reduction vs. position-mean baseline:   {overall_pct_mean:.2f}%")
-    print("\n[summary] The second number is the one that matters: it isolates whether")
-    print("[summary] the CURRENT state (z0) predicts the next displacement, beyond")
-    print("[summary] what a fixed per-position bias already explains (which was ~0%).")
-    print("[summary] If this is also ~0%, z0 carries no linear signal about u_t either —")
-    print("[summary] strong evidence the current single-snapshot conditioning has no")
+    print(f"\n[summary] Aggregate zero-baseline MSE:            {overall_zero:.6f}")
+    print(f"[summary] Aggregate position-mean baseline MSE:    {overall_mean:.6f}")
+    print(f"[summary] Aggregate restoring-force baseline MSE:  {overall_force:.6f}  "
+          f"(CONFOUNDED — see note above)")
+    print(f"[summary] Reduction vs. position-mean (confounded): {overall_pct_mean:.2f}%")
+    print()
+    print(f"[summary] Aggregate z1 variance (baseline):        {overall_z1var:.6f}")
+    print(f"[summary] Aggregate z1 predictability MSE:         {overall_z1pred:.6f}")
+    print(f"[summary] Unconfounded z0->z1 predictability (rho^2): {overall_pct_z1predict:.2f}%")
+    print("\n[summary] The LAST number is the one that matters: it isolates whether the")
+    print("[summary] CURRENT state z0 predicts the FUTURE state z1 at all, with no")
+    print("[summary] mechanical artifact. If it's ~0%, z0 carries no linear signal about")
+    print("[summary] z1 — strong evidence the current single-snapshot conditioning has no")
     print("[summary] first-order signal to exploit, and richer conditioning (explicit")
     print("[summary] velocity/history) is needed, not more training-loop tuning.")
 

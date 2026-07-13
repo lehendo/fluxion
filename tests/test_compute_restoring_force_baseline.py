@@ -151,6 +151,100 @@ class TestComputeRestoringForceBaseline:
         assert result["n_excluded_self_pairs"] == 1
         assert result["L"] == L
 
+    def test_independent_frames_show_no_z1_predictability(self, tmp_path):
+        """The discriminating case that caught the confound: fully independent
+        frames must show ~0% z1-predictability reduction (rho^2 ~ 0), NOT the
+        ~50% that the confounded restoring_force_mse metric gives for the
+        same data (verified in the next test)."""
+        L, d, n = 4, 3, 3000
+        frames = np.random.default_rng(20).standard_normal((n, L, d)).astype(np.float32)
+        _write_protein_with_frames(tmp_path, "protIID", frames)
+
+        ds = LatentDataset(tmp_path, "protIID")
+        result = compute_restoring_force_baseline(ds, batch_size=128, num_workers=0)
+
+        reduction_z1 = 1 - result["z1_predictability_mse"] / result["z1_variance_mse"]
+        assert reduction_z1 < 0.05, (
+            f"independent frames should show ~0% z1-predictability, got {reduction_z1:.4f}"
+        )
+
+    def test_confounded_metric_hits_50pct_ceiling_on_same_independent_frames(self, tmp_path):
+        """Same data as the previous test — demonstrates the confound
+        directly: restoring_force_mse (regressed on u=z1-z0) hits ~50% here
+        even though there is zero real signal, which is exactly why
+        z1_predictability_mse exists."""
+        L, d, n = 4, 3, 3000
+        frames = np.random.default_rng(20).standard_normal((n, L, d)).astype(np.float32)
+        _write_protein_with_frames(tmp_path, "protIID2", frames)
+
+        ds = LatentDataset(tmp_path, "protIID2")
+        result = compute_restoring_force_baseline(ds, batch_size=128, num_workers=0)
+
+        confounded_reduction = 1 - result["restoring_force_mse"] / result["position_mean_mse"]
+        assert confounded_reduction > 0.4, (
+            f"confounded metric should hit the ~50% mechanical ceiling on "
+            f"independent frames, got {confounded_reduction:.4f}"
+        )
+
+    def test_random_walk_shows_high_z1_predictability_despite_no_restoring_force(self, tmp_path):
+        """A random walk with small independent steps: z0 barely predicts u
+        (no restoring force — see test_random_walk_null_shows_no_restoring_
+        force_signal) but z0 predicts z1 very well in an absolute sense
+        (z1 ~= z0 + tiny noise). The two metrics answer genuinely different
+        questions and should disagree sharply here."""
+        L, d, n = 4, 3, 2000
+        rng = np.random.default_rng(21)
+        steps = rng.standard_normal((n - 1, L, d)).astype(np.float32) * 0.1
+        frames = np.concatenate([np.zeros((1, L, d), dtype=np.float32), np.cumsum(steps, axis=0)])
+        _write_protein_with_frames(tmp_path, "protRandomWalk2", frames)
+
+        ds = LatentDataset(tmp_path, "protRandomWalk2")
+        result = compute_restoring_force_baseline(ds, batch_size=64, num_workers=0)
+
+        reduction_z1 = 1 - result["z1_predictability_mse"] / result["z1_variance_mse"]
+        assert reduction_z1 > 0.9, (
+            f"random walk should show HIGH z1-predictability (z0 nearly equals "
+            f"z1), got {reduction_z1:.4f}"
+        )
+
+    def test_ou_process_z1_predictability_matches_rho_squared(self, tmp_path):
+        """For a stationary AR(1) x_{t+1} = phi*x_t + eps with phi = 1-k, the
+        lag-1 autocorrelation IS phi exactly, so z1-predictability reduction
+        should match phi^2 closely. k=0.6 -> phi=0.4 -> expected ~16%."""
+        L, d, n = 4, 3, 3000
+        rng = np.random.default_rng(22)
+        k_true = 0.6
+        phi = 1 - k_true
+        eps_std = 0.05
+
+        frames = np.zeros((n, L, d), dtype=np.float32)
+        frames[0] = rng.standard_normal((L, d)).astype(np.float32)
+        for i in range(n - 1):
+            frames[i + 1] = phi * frames[i] + (
+                rng.standard_normal((L, d)).astype(np.float32) * eps_std
+            )
+        _write_protein_with_frames(tmp_path, "protOU2", frames)
+
+        ds = LatentDataset(tmp_path, "protOU2")
+        result = compute_restoring_force_baseline(ds, batch_size=64, num_workers=0)
+
+        reduction_z1 = 1 - result["z1_predictability_mse"] / result["z1_variance_mse"]
+        expected = phi ** 2
+        assert reduction_z1 == pytest.approx(expected, abs=0.03), (
+            f"expected z1-predictability ~= phi^2 = {expected:.4f}, got {reduction_z1:.4f}"
+        )
+
+    def test_z1_predictability_mse_never_exceeds_z1_variance_mse(self, tmp_path):
+        L, d, n = 4, 3, 500
+        rng = np.random.default_rng(23)
+        frames = rng.standard_normal((n, L, d)).astype(np.float32)
+        _write_protein_with_frames(tmp_path, "protGeneric2", frames)
+
+        ds = LatentDataset(tmp_path, "protGeneric2")
+        result = compute_restoring_force_baseline(ds, batch_size=32, num_workers=0)
+
+        assert result["z1_predictability_mse"] <= result["z1_variance_mse"] + 1e-9
+
     def test_matches_position_mean_baseline_on_shared_fields(self, tmp_path):
         """zero_baseline_mse and position_mean_mse must agree exactly with
         the standalone compute_position_mean_baseline tool on the same data —
