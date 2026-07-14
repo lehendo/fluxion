@@ -108,6 +108,30 @@ def load_pooled_samples(
     of the given proteins into three flat [N, d] tensors, subsampled to
     roughly max_samples_per_protein rows per protein.
 
+    CRITICAL: every sample is centered by ITS OWN (protein, position)'s
+    empirical mean z0 value before pooling across positions. Residue
+    identity dominates raw Chai-1 latent variance far more than frame-to-
+    frame motion does (established earlier in this investigation) — pooling
+    RAW (uncentered) values across many different positions lets a
+    regression trivially "predict" z1 from z0 by recognizing which residue
+    it's looking at, which has nothing to do with real dynamics and produces
+    a spuriously huge apparent signal (discovered 2026-07-14: an early,
+    uncentered version of this function found 99.9% linear predictability
+    of z1 from z0, wildly inconsistent with compute_restoring_force_
+    baseline.py's careful per-position result of exactly 0% on the same
+    proteins/lag — the discrepancy WAS the bug). Centering by each position's
+    own mean removes the identity signal and leaves only genuine temporal
+    deviation, matching the reference frame every earlier diagnostic in this
+    investigation used (each of those computed a SEPARATE regression per
+    position, which implicitly absorbs identity into a per-position
+    intercept — this function makes that explicit since it pools positions).
+
+    The per-position mean is estimated from the FULL (unthinned) z0 stream
+    of THIS SAME protein/split (train proteins use only train data, val
+    proteins use only their own held-out data — no cross-split leakage,
+    and no cross-protein leakage since residue position N of one protein is
+    unrelated to residue position N of another).
+
     Memory note: a single pilot protein has ~30,000 frames x up to 512
     positions ~= 15M (position, frame) pairs — at 3*d_single*4 bytes each
     that's over 70 GB if accumulated in full before subsampling. This
@@ -119,7 +143,8 @@ def load_pooled_samples(
     inherent to random thinning.
 
     Returns:
-        z_prev, z0, z1: float32 [N, d_single]
+        z_prev, z0, z1: float32 [N, d_single], each already centered by its
+        own position's mean.
     """
     torch.manual_seed(seed)
     zprev_chunks, z0_chunks, z1_chunks = [], [], []
@@ -136,7 +161,9 @@ def load_pooled_samples(
 
         n_frames = len(ds)
         keep_prob: float | None = None  # computed once L is known, from the first batch
-        prot_zprev, prot_z0, prot_z1 = [], [], []
+        prot_zprev, prot_z0, prot_z1, prot_posidx = [], [], [], []
+        sum_z0_position: torch.Tensor | None = None  # [L, d] running sum, FULL stream
+        n_position_samples = 0  # per-position frame count (same for every position)
 
         for zp, z0, z1 in loader:
             # Exclude self-paired boundary artifacts (see
@@ -148,44 +175,61 @@ def load_pooled_samples(
             if zp.shape[0] == 0:
                 continue
 
+            B, L, d = zp.shape
             if keep_prob is None:
-                L = zp.shape[1]
                 total_estimate = max(n_frames * L, 1)
                 keep_prob = min(1.0, max_samples_per_protein / total_estimate)
+                sum_z0_position = torch.zeros(L, d)
+
+            # Accumulate the per-position mean from the FULL, unthinned batch
+            # — thinning must never bias this estimate.
+            sum_z0_position += z0.sum(dim=0)
+            n_position_samples += B
+
+            pos_idx = torch.arange(L).unsqueeze(0).expand(B, L).reshape(-1)  # [B*L]
+            zp_flat = zp.reshape(-1, d)
+            z0_flat = z0.reshape(-1, d)
+            z1_flat = z1.reshape(-1, d)
 
             if keep_prob < 1.0:
                 # Thin across the ENTIRE stream (not just until we've "seen
                 # enough") for uniform coverage of the whole trajectory —
                 # stopping early once near the target count would bias the
                 # sample toward the beginning of the trajectory instead.
-                # Flatten [B, L, d] -> [B*L, d] before thinning, matching the
-                # final pooled shape.
-                zp_flat = zp.reshape(-1, zp.shape[-1])
-                z0_flat = z0.reshape(-1, z0.shape[-1])
-                z1_flat = z1.reshape(-1, z1.shape[-1])
                 keep = torch.rand(zp_flat.shape[0]) < keep_prob
-                zp, z0, z1 = zp_flat[keep], z0_flat[keep], z1_flat[keep]
-                if zp.shape[0] == 0:
+                zp_flat, z0_flat, z1_flat, pos_idx = (
+                    zp_flat[keep], z0_flat[keep], z1_flat[keep], pos_idx[keep]
+                )
+                if zp_flat.shape[0] == 0:
                     continue
-            # Flatten [B, L, d] -> [B*L, d]: every residue position is an
-            # independent training example for this pooled, position-
-            # agnostic probe.
-            prot_zprev.append(zp.reshape(-1, zp.shape[-1]))
-            prot_z0.append(z0.reshape(-1, z0.shape[-1]))
-            prot_z1.append(z1.reshape(-1, z1.shape[-1]))
 
-        prot_zprev = torch.cat(prot_zprev, dim=0)
-        prot_z0    = torch.cat(prot_z0, dim=0)
-        prot_z1    = torch.cat(prot_z1, dim=0)
+            prot_zprev.append(zp_flat)
+            prot_z0.append(z0_flat)
+            prot_z1.append(z1_flat)
+            prot_posidx.append(pos_idx)
+
+        prot_zprev  = torch.cat(prot_zprev, dim=0)
+        prot_z0     = torch.cat(prot_z0, dim=0)
+        prot_z1     = torch.cat(prot_z1, dim=0)
+        prot_posidx = torch.cat(prot_posidx, dim=0)
 
         if prot_zprev.shape[0] > max_samples_per_protein:
             perm = torch.randperm(prot_zprev.shape[0])[:max_samples_per_protein]
-            prot_zprev, prot_z0, prot_z1 = prot_zprev[perm], prot_z0[perm], prot_z1[perm]
+            prot_zprev, prot_z0, prot_z1, prot_posidx = (
+                prot_zprev[perm], prot_z0[perm], prot_z1[perm], prot_posidx[perm]
+            )
+
+        position_mean = sum_z0_position / n_position_samples  # [L, d]
+        centering = position_mean[prot_posidx]                # [N, d] — gathered per sample
+        prot_zprev = prot_zprev - centering
+        prot_z0    = prot_z0    - centering
+        prot_z1    = prot_z1    - centering
 
         zprev_chunks.append(prot_zprev)
         z0_chunks.append(prot_z0)
         z1_chunks.append(prot_z1)
-        print(f"[probe] {protein_id}: pooled {prot_zprev.shape[0]} samples", flush=True)
+        print(f"[probe] {protein_id}: pooled {prot_zprev.shape[0]} samples "
+              f"(centered by own-position mean)", flush=True)
 
     return torch.cat(zprev_chunks, dim=0), torch.cat(z0_chunks, dim=0), torch.cat(z1_chunks, dim=0)
 

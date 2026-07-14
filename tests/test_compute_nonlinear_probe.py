@@ -197,6 +197,39 @@ class TestLoadPooledSamples:
         assert z0.shape == (2 * expected_per_protein, d)
         assert z1.shape == (2 * expected_per_protein, d)
 
+    def test_centers_out_position_identity(self, tmp_path):
+        """The critical fix (2026-07-14): each sample must be centered by
+        ITS OWN position's mean before pooling, or residue identity (a huge,
+        near-static per-position offset) leaks into the regression as fake
+        'predictability'. Construct data with a LARGE per-position offset
+        plus a SMALL residual fluctuation, and verify the pooled z0 no
+        longer carries the large offset — i.e. every position's pooled mean
+        is near zero, not near its own distinct large offset."""
+        L, d, n = 8, 3, 60
+        rng = np.random.default_rng(8)
+        # Each position has a distinct, large, static "identity" offset —
+        # this must NOT survive into the pooled output.
+        position_offsets = rng.standard_normal((L, d)).astype(np.float32) * 10.0
+        small_fluctuation = rng.standard_normal((n, L, d)).astype(np.float32) * 0.1
+        frames = position_offsets[None, :, :] + small_fluctuation
+        _write_protein_with_frames(tmp_path, "protIdentity", frames)
+
+        zp, z0, z1 = load_pooled_samples(
+            tmp_path, ["protIdentity"], norm_stats=None,
+            lag=1, velocity_lag=1, max_samples_per_protein=100_000, seed=0,
+            num_workers=0,
+        )
+
+        # If centering worked, the pooled z0's overall mean/std should be on
+        # the scale of the SMALL fluctuation (~0.1), not the large per-
+        # position offset (~10) that would dominate if identity leaked in.
+        assert z0.abs().mean().item() < 1.0, (
+            f"pooled z0 should be centered near zero (small residual scale), "
+            f"got mean abs value {z0.abs().mean().item():.3f} — position "
+            f"identity may have leaked through uncentered"
+        )
+        assert z0.std().item() < 1.0
+
     def test_subsampling_cap_enforced(self, tmp_path):
         """Subsampling uses per-sample Bernoulli thinning INSIDE the
         streaming loop (bounded memory — see load_pooled_samples docstring
