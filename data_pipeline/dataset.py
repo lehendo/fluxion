@@ -257,6 +257,60 @@ class LatentDataset(Dataset):
         )
 
 
+class StaticFrameDataset(Dataset):
+    """
+    Yields INDIVIDUAL frames — (single, pair, frame_idx), no pairing — for
+    static ensemble generation training.
+
+    Every MD frame across every replica is treated as an i.i.d. sample from
+    the protein's equilibrium conformational distribution (the task is
+    "learn to generate a plausible conformation," not "predict the next
+    frame"), so unlike LatentDataset there is no lag/velocity_lag/replica-
+    pairing concern at all — replica boundaries don't matter when frames
+    are never paired with each other. The "noise" half of the OT-CFM
+    training pair (z0) is generated fresh at training time (see
+    training/train_static.py), not read from disk.
+
+    Wraps a LatentDataset by composition to reuse its already-tested shard-
+    reading, replica-grouping, deduplication, and normalization logic
+    without duplicating any of it — only consumes its index_map and
+    _load_frame, ignoring the pairing machinery entirely.
+    """
+
+    def __init__(
+        self,
+        data_dir: Union[str, Path],
+        protein_name: str,
+        load_pair: bool = True,
+        norm_stats: dict[str, torch.Tensor] | None = None,
+    ) -> None:
+        self._inner = LatentDataset(
+            data_dir, protein_name, load_pair=load_pair, norm_stats=norm_stats,
+        )
+        self.protein_name = protein_name
+        self.static_pair = self._inner.static_pair
+
+    def __len__(self) -> int:
+        return len(self._inner.index_map)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor | None, int]:
+        """
+        Returns:
+            single:    float32 [L, d_single] — a single real conformational
+                       sample (normalized if norm_stats given)
+            pair:      float32 [L, L, d_pair], or None if load_pair=False
+            frame_idx: int — original MD trajectory frame index
+        """
+        single = self._inner._load_frame(idx)
+        shard_path, local_idx = self._inner.index_map[idx]
+        f = self._inner._get_handle(shard_path)
+        frame_idx = int(f["frame_idx"][local_idx])
+        return single, self.static_pair, frame_idx
+
+    def __repr__(self) -> str:
+        return f"StaticFrameDataset(protein={self.protein_name!r}, frames={len(self)})"
+
+
 # ---------------------------------------------------------------------------
 # Multi-protein helpers
 # ---------------------------------------------------------------------------
@@ -329,6 +383,56 @@ def build_multi_protein_dataset(
     return ConcatDataset(datasets)
 
 
+def build_multi_protein_static_dataset(
+    latents_dir: Union[str, Path],
+    protein_ids: list[str] | None = None,
+    norm_stats_path: Union[str, Path, None] = None,
+) -> ConcatDataset:
+    """
+    Same discovery/normalization behavior as build_multi_protein_dataset, but
+    builds StaticFrameDataset instances (individual frames, no pairing) for
+    static ensemble generation training instead of LatentDataset instances.
+    """
+    latents_dir = Path(latents_dir)
+
+    if norm_stats_path is None:
+        norm_stats_path = latents_dir / "norm_stats.pt"
+    norm_stats_path = Path(norm_stats_path)
+    norm_stats: dict[str, torch.Tensor] | None = None
+    if norm_stats_path.exists():
+        norm_stats = torch.load(norm_stats_path, weights_only=True)
+        print(f"[dataset] Loaded normalization stats from {norm_stats_path}", flush=True)
+    else:
+        print(f"[dataset] No normalization stats found at {norm_stats_path} — "
+              f"proceeding WITHOUT latent normalization.", flush=True)
+
+    datasets = []
+    skipped = []
+    for protein_dir in sorted(latents_dir.iterdir()):
+        if not protein_dir.is_dir():
+            continue
+        if protein_ids is not None and protein_dir.name not in protein_ids:
+            continue
+        manifest = protein_dir / "manifest.json"
+        pair     = protein_dir / "pair.pt"
+        if not manifest.exists() or not pair.exists():
+            skipped.append(protein_dir.name)
+            continue
+        datasets.append(StaticFrameDataset(
+            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats,
+        ))
+
+    if skipped:
+        print(f"[dataset] Skipped {len(skipped)} proteins (missing manifest or pair.pt): "
+              f"{skipped}", flush=True)
+    if not datasets:
+        raise RuntimeError(f"No valid protein datasets found in {latents_dir}")
+
+    total_frames = sum(len(d) for d in datasets)
+    print(f"[dataset] {len(datasets)} proteins, {total_frames} total frames", flush=True)
+    return ConcatDataset(datasets)
+
+
 def collate_fn(
     batch: list[tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, int]],
 ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -362,6 +466,45 @@ def collate_fn(
 
     return (
         (torch.stack(z0_list), torch.stack(z1_list)),
+        torch.stack(pair_list),
+        torch.tensor(fidx_list, dtype=torch.int64),
+        torch.stack(mask_list),
+    )
+
+
+def collate_fn_static(
+    batch: list[tuple[torch.Tensor, torch.Tensor, int]],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Pad a mixed-length batch of individual frames to the longest sequence in it.
+
+    Each sample is (single [L_i, d_s], pair [L_i, L_i, d_p], frame_idx) — see
+    StaticFrameDataset. Unlike collate_fn there is only one latent tensor per
+    sample (no z0/z1 pairing); z0 is generated fresh as noise at train time.
+
+    Returns:
+        single        float32 [B, L_max, d_s]
+        pair          float32 [B, L_max, L_max, d_p]
+        frame_idx     int64   [B]
+        padding_mask  bool    [B, L_max]  — True = padded position (ignore in loss/attn)
+    """
+    L_max = max(item[0].shape[0] for item in batch)
+
+    single_list, pair_list, mask_list, fidx_list = [], [], [], []
+    for single, pair, frame_idx in batch:
+        L = single.shape[0]
+        pad = L_max - L
+
+        single_list.append(F.pad(single, (0, 0, 0, pad)))      # [L_max, d_s]
+        pair_list.append(F.pad(pair, (0, 0, 0, pad, 0, pad)))  # [L_max, L_max, d_p]
+
+        mask = torch.zeros(L_max, dtype=torch.bool)
+        mask[L:] = True
+        mask_list.append(mask)
+        fidx_list.append(frame_idx)
+
+    return (
+        torch.stack(single_list),
         torch.stack(pair_list),
         torch.tensor(fidx_list, dtype=torch.int64),
         torch.stack(mask_list),

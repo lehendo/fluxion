@@ -22,8 +22,11 @@ import torch
 
 from data_pipeline.dataset import (
     LatentDataset,
+    StaticFrameDataset,
     build_multi_protein_dataset,
+    build_multi_protein_static_dataset,
     collate_fn,
+    collate_fn_static,
 )
 
 
@@ -688,3 +691,194 @@ class TestDatasetCollateFnIntegration:
         # protA row should be padded in positions L_A:L_max
         assert mask[0, L_A:].all()
         assert not mask[1].any()   # protB is the longer one
+
+
+# ---------------------------------------------------------------------------
+# StaticFrameDataset — individual frames for static ensemble generation
+# ---------------------------------------------------------------------------
+
+class TestStaticFrameDataset:
+    def test_len_equals_frame_count(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = StaticFrameDataset(tmp_path, "protA")
+        assert len(ds) == N_FRAMES_A
+
+    def test_getitem_shapes(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = StaticFrameDataset(tmp_path, "protA")
+        single, pair, frame_idx = ds[0]
+        assert single.shape == (L_A, D_S)
+        assert pair.shape   == (L_A, L_A, D_P)
+        assert isinstance(frame_idx, int)
+
+    def test_no_pairing_every_frame_independently_addressable(self, tmp_path):
+        """Unlike LatentDataset, there is no z0/z1 concept — every frame,
+        including the last one in a replica, returns its own real value with
+        no self-pairing artifact."""
+        protein = "protStatic"
+        protein_dir = tmp_path / protein
+        shard_dir = protein_dir / protein
+        shard_dir.mkdir(parents=True)
+        L, d_s, n = 4, 3, 10
+        _write_shard_valued(shard_dir, f"{protein}_R1_shard_000000.h5", n, L, d_s, 0, 0.0)
+        _write_manifest(protein_dir, protein, [{
+            "path": f"{protein}/{protein}_R1_shard_000000.h5", "n_frames": n,
+            "first_idx": 0, "last_idx": n - 1,
+        }])
+        _write_pair(protein_dir, L)
+
+        ds = StaticFrameDataset(tmp_path, protein)
+        assert len(ds) == n
+        for i in range(n):
+            single, _pair, _fidx = ds[i]
+            assert single[0, 0].item() == pytest.approx(float(i))
+
+    def test_load_pair_false(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = StaticFrameDataset(tmp_path, "protA", load_pair=False)
+        _single, pair, _fidx = ds[0]
+        assert pair is None
+
+    def test_normalization_applied(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        mean = torch.full((D_S,), 2.0)
+        std  = torch.full((D_S,), 3.0)
+        ds_raw  = StaticFrameDataset(tmp_path, "protA")
+        ds_norm = StaticFrameDataset(tmp_path, "protA", norm_stats={"mean": mean, "std": std})
+        single_raw,  _, _ = ds_raw[0]
+        single_norm, _, _ = ds_norm[0]
+        assert torch.allclose(single_norm, (single_raw - mean) / std, atol=1e-5)
+
+    def test_float32_output(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = StaticFrameDataset(tmp_path, "protA")
+        single, pair, _ = ds[0]
+        assert single.dtype == torch.float32
+        assert pair.dtype   == torch.float32
+
+    def test_repr(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        ds = StaticFrameDataset(tmp_path, "protA")
+        r = repr(ds)
+        assert "protA" in r
+        assert str(N_FRAMES_A) in r
+
+
+class TestBuildMultiProteinStaticDataset:
+    def test_discovers_both_proteins(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        make_protein_dir(tmp_path, "protB", N_FRAMES_B, L_B)
+        ds = build_multi_protein_static_dataset(tmp_path)
+        assert len(ds) == N_FRAMES_A + N_FRAMES_B
+        assert all(isinstance(d, StaticFrameDataset) for d in ds.datasets)
+
+    def test_skips_protein_missing_pair(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        protB_dir = tmp_path / "protB"
+        shard_dir = protB_dir / "protB"
+        shard_dir.mkdir(parents=True)
+        _write_shard(shard_dir, "shard_000000.h5", N_FRAMES_B, L_B)
+        _write_manifest(protB_dir, "protB", [{
+            "path": "protB/shard_000000.h5", "n_frames": N_FRAMES_B,
+            "first_idx": 0, "last_idx": N_FRAMES_B - 1,
+        }])
+        ds = build_multi_protein_static_dataset(tmp_path)
+        assert len(ds) == N_FRAMES_A
+
+    def test_raises_if_no_valid_proteins(self, tmp_path):
+        with pytest.raises(RuntimeError, match="No valid protein"):
+            build_multi_protein_static_dataset(tmp_path)
+
+    def test_auto_detects_norm_stats(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        mean = torch.zeros(D_S)
+        std  = torch.full((D_S,), 2.0)
+        torch.save({"mean": mean, "std": std}, tmp_path / "norm_stats.pt")
+
+        ds = build_multi_protein_static_dataset(tmp_path)
+        underlying = ds.datasets[0]
+        assert underlying._inner.norm_mean is not None
+        assert torch.allclose(underlying._inner.norm_std, std)
+
+    def test_protein_ids_filter(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        make_protein_dir(tmp_path, "protB", N_FRAMES_B, L_B)
+        ds = build_multi_protein_static_dataset(tmp_path, protein_ids=["protA"])
+        assert len(ds) == N_FRAMES_A
+
+
+# ---------------------------------------------------------------------------
+# collate_fn_static tests
+# ---------------------------------------------------------------------------
+
+class TestCollateFnStatic:
+    def _make_sample(self, L: int):
+        single = torch.randn(L, D_S)
+        pair   = torch.randn(L, L, D_P)
+        return single, pair, 42
+
+    def test_output_shapes_uniform_length(self):
+        batch = [self._make_sample(L_A) for _ in range(3)]
+        single, pair, fidx, mask = collate_fn_static(batch)
+        assert single.shape == (3, L_A, D_S)
+        assert pair.shape   == (3, L_A, L_A, D_P)
+        assert fidx.shape   == (3,)
+        assert mask.shape   == (3, L_A)
+        assert not mask.any()
+
+    def test_output_shapes_mixed_length(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        L_max = max(L_A, L_B)
+        single, pair, fidx, mask = collate_fn_static(batch)
+        assert single.shape == (2, L_max, D_S)
+        assert pair.shape   == (2, L_max, L_max, D_P)
+        assert mask.shape   == (2, L_max)
+
+    def test_padding_mask_correct(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        _, _, _, mask = collate_fn_static(batch)
+        shorter_idx = 0 if L_A < L_B else 1
+        longer_idx  = 1 - shorter_idx
+        L_short = min(L_A, L_B)
+        assert not mask[shorter_idx, :L_short].any()
+        assert mask[shorter_idx, L_short:].all()
+        assert not mask[longer_idx].any()
+
+    def test_pad_region_is_zero(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        single, pair, _, mask = collate_fn_static(batch)
+        shorter_idx = 0 if L_A < L_B else 1
+        L_short = min(L_A, L_B)
+        assert single[shorter_idx, L_short:].eq(0).all()
+        assert pair[shorter_idx, L_short:].eq(0).all()
+        assert pair[shorter_idx, :, L_short:].eq(0).all()
+
+    def test_frame_idx_preserved(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_A)]
+        _, _, fidx, _ = collate_fn_static(batch)
+        assert fidx.tolist() == [42, 42]
+
+    def test_dtypes(self):
+        batch = [self._make_sample(L_A)]
+        single, pair, fidx, mask = collate_fn_static(batch)
+        assert single.dtype == torch.float32
+        assert pair.dtype   == torch.float32
+        assert fidx.dtype   == torch.int64
+        assert mask.dtype   == torch.bool
+
+
+class TestStaticDatasetCollateFnIntegration:
+    def test_mixed_proteins_batch(self, tmp_path):
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        make_protein_dir(tmp_path, "protB", N_FRAMES_B, L_B)
+        ds = build_multi_protein_static_dataset(tmp_path)
+
+        sample_a = ds[0]
+        sample_b = ds[N_FRAMES_A]
+        single, pair, fidx, mask = collate_fn_static([sample_a, sample_b])
+
+        L_max = max(L_A, L_B)
+        assert single.shape == (2, L_max, D_S)
+        assert pair.shape   == (2, L_max, L_max, D_P)
+        assert mask[0, L_A:].all()
+        assert not mask[1].any()
