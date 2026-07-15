@@ -1,9 +1,11 @@
 #!/bin/bash
 # Cheap pre-validation for the static-ensemble pivot (noise -> equilibrium
 # frame OT-CFM, see training/train_static.py) BEFORE committing to a full
-# multi-day multi-GPU run. Single GPU, capped at --max-steps, short walltime.
-# Confirms: no crashes in the new dataset/collate/training-loop wiring, and
-# that loss is finite and trending down — not a claim of final results.
+# multi-day multi-GPU run. Single GPU, short walltime. Only goal: catch
+# crashes/OOM/shape bugs in the new dataset/collate/training-loop wiring and
+# confirm loss is finite — these show up in the first few hundred steps, not
+# after thousands. Whether loss trends down past warmup is a SEPARATE, longer
+# question for a follow-up run, not this one.
 #SBATCH --job-name=flux_train_static_diag
 #SBATCH --partition=scavenger
 #SBATCH --nodes=1
@@ -11,8 +13,8 @@
 #SBATCH --gres=gpu:QuadroRTX6000:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=00:30:00
-#SBATCH --signal=SIGUSR1@120
+#SBATCH --time=00:05:00
+#SBATCH --signal=SIGUSR1@30
 #SBATCH --output=logs/train_static_diag_%j.out
 #SBATCH --error=logs/train_static_diag_%j.err
 
@@ -31,7 +33,7 @@ export MASTER_PORT=29500
 # for direct comparability.
 PILOT_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B"
 
-torchrun \
+srun torchrun \
     --nnodes=1 \
     --nproc_per_node=1 \
     --rdzv_id=$SLURM_JOB_ID \
@@ -44,4 +46,4 @@ torchrun \
     --lr            1e-4 \
     --epochs        1000 \
     --log-interval  10 \
-    --max-steps     3000
+    --max-steps     300

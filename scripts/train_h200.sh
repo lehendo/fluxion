@@ -26,7 +26,7 @@ export MASTER_PORT=29500
 
 PILOT_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B"
 
-torchrun \
+srun torchrun \
     --nnodes=1 \
     --nproc_per_node=1 \
     --rdzv_id=$SLURM_JOB_ID \
