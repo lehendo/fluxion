@@ -5,11 +5,10 @@
 # Confirms: no crashes in the new dataset/collate/training-loop wiring, and
 # that loss is finite and trending down — not a claim of final results.
 #SBATCH --job-name=flux_train_static_diag
-#SBATCH --partition=ic-express
-#SBATCH --account=jimeng-ic
+#SBATCH --partition=secondary
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:h100.1g.20gb:1
+#SBATCH --gres=gpu:H100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=00:30:00
