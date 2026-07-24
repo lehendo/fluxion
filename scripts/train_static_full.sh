@@ -50,6 +50,6 @@ srun torchrun \
     --scratch-dir          /scratch/arjunc4/fluxion_data \
     --batch-size            16 \
     --lr                    1e-4 \
-    --epochs                200 \
+    --epochs                20 \
     --log-interval          50 \
     --checkpoint-interval   500
