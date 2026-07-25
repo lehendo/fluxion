@@ -20,10 +20,11 @@
 # `sinfo -N -o "%25P %15N %25G %10t" | grep -i gpu`) if this partition/gres
 # combo isn't available when you submit.
 #SBATCH --job-name=flux_eval_ensemble
-#SBATCH --partition=scavenger
+#SBATCH --partition=ic-express
+#SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:H100:1
+#SBATCH --gres=gpu:nvidia_h100_80gb_hbm3:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=01:00:00
