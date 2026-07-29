@@ -192,55 +192,69 @@ def extract_ca_trajectory(
 
 
 # ---------------------------------------------------------------------------
-# Chai-1 structure module decoder
+# Chai-1 diffusion module decoder
 # ---------------------------------------------------------------------------
+#
+# 2026-07 correction: an earlier version of this function called a
+# nonexistent "structure_module.pt" component directly with a 4-argument
+# single-shot signature. Verified against the real chai_lab source
+# (chai_lab/chai1.py) on the cluster: the actual coordinate-generating
+# component is "diffusion_module.pt", and it requires a full multi-step
+# EDM/Karras denoising loop (noise schedule, second-order correction, random
+# augmentation between steps) plus several other feature tensors built
+# during trunk input embedding — not a single forward call.
+#
+# Rather than hand-reimplementing that ~300-line pipeline (real risk of
+# silent transcription bugs), this monkeypatches ONLY chai_lab's own
+# `load_exported("trunk.pt", ...)` call to return our substituted
+# (single, pair) representation instead of running Chai-1's real
+# sequence-derived trunk, then calls chai_lab's real, unmodified
+# `run_folding_on_context` for everything else (feature construction,
+# diffusion sampling, confidence scoring, CIF writing) — reusing 100% of
+# their tested code for every part we don't intend to change.
+#
+# Correctness must be validated independently of whether FluxionDiT's
+# generative model works: see scripts/verify_chai1_decode.py, which decodes
+# a REAL already-extracted (single, pair) latent for a known ATLAS frame and
+# checks the resulting structure is close (low RMSD) to that frame's real,
+# known coordinates.
 
-def chai1_decode(
-    trajectory: torch.Tensor,   # [T, L, d_single]
-    pair: torch.Tensor,          # [L, L, d_pair]
+def chai1_decode_to_cif(
+    single: torch.Tensor,        # [L, d_single] or [1, L, d_single], raw Chai-1 scale
+    pair: torch.Tensor,          # [L, L, d_pair] or [1, L, L, d_pair], raw Chai-1 scale
     fasta_path: Path,
+    output_dir: Path,
     device: torch.device,
-) -> np.ndarray:
+    num_diffn_timesteps: int = 200,
+    num_diffn_samples: int = 1,
+    seed: int | None = None,
+):
     """
-    Decode each rollout latent to 3D atom coordinates via Chai-1's
-    diffusion-based structure module.
+    Decode a single/pair representation to 3D structure via Chai-1's real
+    diffusion inference pipeline, substituting our own trunk representation
+    in place of Chai-1's own sequence-derived one.
 
-    Strategy
-    --------
-    Build the full Chai-1 feature context from the protein FASTA (reusing the
-    ESM cache written during latent extraction), then substitute the FluxionDiT
-    single representation in place of Chai-1's trunk output before calling the
-    structure module.  The pair representation from pair.pt is used as-is.
-
-    Returns:
-        coords: float32 [T, n_atoms, 3] — predicted all-atom positions (Å)
+    Returns the chai_lab StructureCandidates object. CIF files are written
+    to output_dir/pred.model_idx_<i>.cif (one per num_diffn_samples).
     """
     try:
-        from chai_lab.chai1 import (  # type: ignore[import]
-            load_exported,
-            make_all_atom_feature_context,
-            feature_factory,
-        )
-        from chai_lab.data.collate.collate import Collate          # type: ignore[import]
-        from chai_lab.model.utils import move_data_to_device       # type: ignore[import]
-        from chai_lab.utils.tensor_utils import und_self           # type: ignore[import]
+        import chai_lab.chai1 as chai1_module               # type: ignore[import]
+        from chai_lab.chai1 import make_all_atom_feature_context  # type: ignore[import]
     except ImportError as exc:
         raise ImportError(
             "chai-lab is not installed or not importable. "
             "Activate the fluxion conda environment."
         ) from exc
 
-    # Load structure module compiled weights
-    try:
-        structure_module = load_exported("structure_module.pt", device)
-    except Exception as exc:
-        raise RuntimeError(
-            "Could not load structure_module.pt.  "
-            "Ensure CHAI_WEIGHTS_DIR contains the full Chai-1 weight set "
-            "including structure_module.pt."
-        ) from exc
+    from unittest.mock import patch
 
-    # Build feature context — reuses ESM cache from extraction
+    if single.dim() == 2:
+        single = single.unsqueeze(0)
+    if pair.dim() == 3:
+        pair = pair.unsqueeze(0)
+    single = single.to(device).float()
+    pair = pair.to(device).float()
+
     esm_cache = fasta_path.parent / "esm_cache"
     feature_context = make_all_atom_feature_context(
         fasta_file=fasta_path,
@@ -249,54 +263,44 @@ def chai1_decode(
         esm_device=torch.device("cpu"),
     )
 
-    # Collate to get atom-level conditioning tensors
-    collator = Collate(
-        feature_factory=feature_factory,
-        num_key_atoms=128,
-        num_query_atoms=32,
-    )
-    batch  = collator([feature_context])
-    batch  = move_data_to_device(batch, device=device)
-    inputs = batch["inputs"]
+    real_load_exported = chai1_module.load_exported
 
-    atom_single_mask   = inputs["atom_exists_mask"]          # [1, n_atoms]
-    atom_token_indices = inputs["atom_token_index"].long()   # [1, n_atoms]
+    class _FakeTrunk:
+        """Stand-in for the real trunk module: ignores every input and
+        always returns our substituted (single, pair) representation,
+        matching the (token_single_trunk_repr, token_pair_trunk_repr)
+        tuple contract of the real trunk.forward()."""
 
-    T          = trajectory.shape[0]
-    all_coords = []
+        def forward(self, **kwargs):
+            return single, pair
 
-    pair_b = pair.unsqueeze(0).to(device).bfloat16()   # [1, L, L, d_p], fixed
+    def _patched_load_exported(comp_key: str, dev: torch.device):
+        if comp_key == "trunk.pt":
+            return _FakeTrunk()
+        return real_load_exported(comp_key, dev)
 
-    for step_idx in range(T):
-        if step_idx % 20 == 0:
-            print(f"  Chai-1 decode: {step_idx}/{T}", flush=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with patch.object(chai1_module, "load_exported", _patched_load_exported):
+        candidates = chai1_module.run_folding_on_context(
+            feature_context,
+            output_dir=output_dir,
+            num_trunk_recycles=1,  # irrelevant — fake trunk ignores recycling
+            num_diffn_timesteps=num_diffn_timesteps,
+            num_diffn_samples=num_diffn_samples,
+            seed=seed,
+            device=device,
+            low_memory=False,
+        )
 
-        single_b = trajectory[step_idx].unsqueeze(0).to(device).bfloat16()  # [1, L, d_s]
+    return candidates
 
-        with torch.no_grad():
-            out = structure_module(
-                token_single_trunk_repr=single_b,
-                token_pair_trunk_repr=pair_b,
-                atom_single_mask=atom_single_mask,
-                atom_token_indices=atom_token_indices,
-            )
 
-        # Extract coordinate tensor from output (exact field depends on chai-lab version)
-        if isinstance(out, torch.Tensor):
-            xyz = out
-        elif hasattr(out, "coords"):
-            xyz = out.coords
-        elif isinstance(out, (tuple, list)):
-            xyz = out[0]
-        else:
-            raise ValueError(
-                f"Unexpected structure_module output type: {type(out)}. "
-                "Inspect the module and update this extractor."
-            )
-
-        all_coords.append(xyz.squeeze(0).float().cpu().numpy())
-
-    return np.stack(all_coords, axis=0).astype(np.float32)  # [T, n_atoms, 3]
+def extract_ca_from_cif(cif_path: Path) -> np.ndarray:
+    """Extract Cα coordinates from a chai_lab-written CIF file. Returns
+    float32 [n_ca, 3]."""
+    import MDAnalysis as mda  # cluster-only dependency; import lazily
+    u = mda.Universe(str(cif_path))
+    return u.select_atoms("name CA").positions.copy().astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -519,14 +523,26 @@ def main() -> None:
                         args.out_dir, protein_id)
 
     elif args.mode == "chai1":
-        # ── Chai-1 structure module ──────────────────────────────────────────
+        # ── Chai-1 diffusion module (real multi-step sampling per frame) ──────
         pair_path = args.latents_dir / protein_id / "pair.pt"
         pair      = torch.load(pair_path, weights_only=True).float()
         fasta_path = args.latents_dir / protein_id / f"{protein_id}.fasta"
         if not fasta_path.exists():
             raise FileNotFoundError(f"FASTA not found: {fasta_path}")
 
-        coords = chai1_decode(trajectory, pair, fasta_path, device)
+        chai1_out_dir = args.out_dir / f"{protein_id}_chai1_cif"
+        T = trajectory.shape[0]
+        all_coords = []
+        for step_idx in range(T):
+            print(f"  Chai-1 decode: {step_idx}/{T}", flush=True)
+            candidates = chai1_decode_to_cif(
+                trajectory[step_idx], pair, fasta_path,
+                chai1_out_dir / f"step_{step_idx:04d}",
+                device, num_diffn_samples=1,
+            )
+            all_coords.append(extract_ca_from_cif(candidates.cif_paths[0]))
+        coords = np.stack(all_coords, axis=0).astype(np.float32)
+
         out_pt = args.out_dir / f"{protein_id}_rollout_chai1.pt"
         torch.save({"coords": torch.from_numpy(coords), "t_eval": t_eval}, out_pt)
         print(f"Saved Chai-1-decoded trajectory → {out_pt}", flush=True)

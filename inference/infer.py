@@ -51,7 +51,8 @@ from inference.visualize import (
     load_all_latents,
     nn_decode,
     extract_ca_trajectory,
-    chai1_decode,
+    chai1_decode_to_cif,
+    extract_ca_from_cif,
     compute_pairwise_rmsds,
     write_pdb_trajectory,
     write_xtc_trajectory,
@@ -198,9 +199,26 @@ def run(args: argparse.Namespace) -> dict:
                 "Run extract_pairs.py to generate it."
             )
 
-        print(f"[infer] Chai-1 structure module decode ({T} steps) …", flush=True)
-        t0     = time.perf_counter()
-        coords = chai1_decode(trajectory, pair, fasta_path, device)
+        # Real diffusion sampling (num_diffn_timesteps steps) per frame — a
+        # genuine multi-step generative decode, not a cheap single forward
+        # pass. Expensive by construction; this is a legacy per-frame loop
+        # kept working for the temporal trajectory path. For the current
+        # static-ensemble pivot, decode ensemble members individually via
+        # chai1_decode_to_cif directly instead of looping a "trajectory".
+        print(f"[infer] Chai-1 diffusion decode ({T} steps, real multi-step "
+              f"sampling per step — this is slow) …", flush=True)
+        t0 = time.perf_counter()
+        chai1_out_dir = args.out_dir / f"{args.protein_id}_chai1_cif"
+        all_coords = []
+        for step_idx in range(T):
+            print(f"  Chai-1 decode: {step_idx}/{T}", flush=True)
+            candidates = chai1_decode_to_cif(
+                trajectory[step_idx], pair, fasta_path,
+                chai1_out_dir / f"step_{step_idx:04d}",
+                device, num_diffn_samples=1,
+            )
+            all_coords.append(extract_ca_from_cif(candidates.cif_paths[0]))
+        coords = np.stack(all_coords, axis=0).astype(np.float32)
         chai_elapsed = time.perf_counter() - t0
         print(f"  Decoded {T} frames in {chai_elapsed:.1f}s "
               f"({chai_elapsed / T:.1f} s/step)", flush=True)
