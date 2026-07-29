@@ -48,6 +48,9 @@ from inference.visualize import (
     load_all_latents,
     nn_decode,
     extract_ca_trajectory,
+    chai1_decode_to_cif,
+    build_chai1_feature_context,
+    extract_ca_from_cif,
     _kabsch_rmsd,
 )
 
@@ -228,16 +231,54 @@ def run(args: argparse.Namespace) -> dict:
     total_real = len(frame_idxs)
     print(f"  {total_real} real frames across replicas {sorted(set(replica_ids))}", flush=True)
 
-    print("[evaluate_ensemble] Nearest-neighbor decoding generated ensemble …", flush=True)
-    nn_frames, nn_replicas, nn_distances = nn_decode(
-        ensemble, latents, frame_idxs, replica_ids, batch_size=args.nn_batch_size,
-    )
-    unique_frac = len(set(zip(nn_frames.tolist(), nn_replicas.tolist()))) / N
-    print(f"  NN mean distance={nn_distances.mean():.4f}  "
-          f"unique-frame fraction={unique_frac:.3f}", flush=True)
+    nn_metrics: dict = {}
+    if args.decode_mode == "nn":
+        print("[evaluate_ensemble] Nearest-neighbor decoding generated ensemble …",
+              flush=True)
+        nn_frames, nn_replicas, nn_distances = nn_decode(
+            ensemble, latents, frame_idxs, replica_ids, batch_size=args.nn_batch_size,
+        )
+        unique_frac = len(set(zip(nn_frames.tolist(), nn_replicas.tolist()))) / N
+        print(f"  NN mean distance={nn_distances.mean():.4f}  "
+              f"unique-frame fraction={unique_frac:.3f}", flush=True)
+        nn_metrics = {
+            "nn_mean_distance": float(nn_distances.mean()),
+            "nn_max_distance": float(nn_distances.max()),
+            "unique_nn_frame_fraction": float(unique_frac),
+        }
 
-    print("[evaluate_ensemble] Extracting generated-ensemble Cα coordinates …", flush=True)
-    gen_coords = extract_ca_trajectory(args.atlas_raw, protein_id, nn_frames, nn_replicas)
+        print("[evaluate_ensemble] Extracting generated-ensemble Cα coordinates …",
+              flush=True)
+        gen_coords = extract_ca_trajectory(args.atlas_raw, protein_id, nn_frames, nn_replicas)
+
+    else:  # decode_mode == "chai1" — real 3D structure via Chai-1's diffusion module
+        pair_path = args.latents_dir / protein_id / "pair.pt"
+        pair = torch.load(pair_path, weights_only=True).float()
+        fasta_path = args.latents_dir / protein_id / f"{protein_id}.fasta"
+        if not fasta_path.exists():
+            raise FileNotFoundError(f"FASTA not found: {fasta_path}")
+
+        device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+        print(f"[evaluate_ensemble] Building Chai-1 feature context once for "
+              f"{protein_id!r} (reused across all {N} decodes) …", flush=True)
+        feature_context = build_chai1_feature_context(fasta_path)
+
+        print(f"[evaluate_ensemble] Decoding {N} generated samples via Chai-1's "
+              f"diffusion module ({args.num_diffn_timesteps} steps each) …", flush=True)
+        chai1_out_dir = args.out_dir / f"{protein_id}_chai1_cif"
+        gen_coords_list = []
+        for i in range(N):
+            if i % 10 == 0:
+                print(f"  Chai-1 decode: {i}/{N}", flush=True)
+            candidates = chai1_decode_to_cif(
+                ensemble[i], pair, fasta_path,
+                chai1_out_dir / f"sample_{i:04d}",
+                device, num_diffn_timesteps=args.num_diffn_timesteps,
+                num_diffn_samples=1, seed=args.seed + i,
+                feature_context=feature_context,
+            )
+            gen_coords_list.append(extract_ca_from_cif(candidates.cif_paths[0]))
+        gen_coords = np.stack(gen_coords_list, axis=0).astype(np.float32)
 
     print(f"[evaluate_ensemble] Sampling {args.n_real_samples} real MD reference frames …",
           flush=True)
@@ -271,11 +312,10 @@ def run(args: argparse.Namespace) -> dict:
 
     metrics = {
         "protein_id": protein_id,
+        "decode_mode": args.decode_mode,
         "n_generated": N,
         "n_real_reference": n_real,
-        "nn_mean_distance": float(nn_distances.mean()),
-        "nn_max_distance": float(nn_distances.max()),
-        "unique_nn_frame_fraction": float(unique_frac),
+        **nn_metrics,
         "diversity_generated_mean_A": float(gen_diversity.mean()),
         "diversity_generated_std_A": float(gen_diversity.std()),
         "diversity_real_mean_A": float(real_diversity.mean()),
@@ -311,6 +351,15 @@ def main() -> None:
     parser.add_argument("--max-diversity-pairs", default=20_000, type=int,
                         help="Cap on number of pairs for the diversity metric (default 20000)")
     parser.add_argument("--nn-batch-size", default=64, type=int)
+    parser.add_argument("--decode-mode", default="nn", choices=["nn", "chai1"],
+                        help="'nn' (default, cheap, can only return real training "
+                             "structures) or 'chai1' (real diffusion-decoded 3D "
+                             "structure per sample — slower, the actual test of "
+                             "generative novelty, not just retrieval)")
+    parser.add_argument("--num-diffn-timesteps", default=200, type=int,
+                        help="Diffusion steps per structure in chai1 mode (default 200)")
+    parser.add_argument("--device", default="cuda",
+                        help="Device for chai1 decode mode (default cuda)")
     parser.add_argument("--seed", default=0, type=int)
     args = parser.parse_args()
 

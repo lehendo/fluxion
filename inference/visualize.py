@@ -219,6 +219,32 @@ def extract_ca_trajectory(
 # checks the resulting structure is close (low RMSD) to that frame's real,
 # known coordinates.
 
+# Process-lifetime cache for loaded Chai-1 components (feature_embedding,
+# bond_loss_input_proj, token_embedder, diffusion_module, confidence_head —
+# everything EXCEPT trunk, which is always our fake substitute). Decoding an
+# ensemble means calling chai1_decode_to_cif many times in a loop for the
+# SAME protein; without this, every call would reload ~40GB of weights from
+# scratch via load_exported, which is the dominant cost for anything beyond
+# a single one-off decode. Keyed by (comp_key, device) so it's safe if a
+# process ever decodes on more than one device.
+_CHAI1_COMPONENT_CACHE: dict[tuple[str, str], object] = {}
+
+
+def build_chai1_feature_context(fasta_path: Path):
+    """Build the Chai-1 feature context once, for reuse across many
+    chai1_decode_to_cif calls on the same protein (same sequence -> same
+    context; only the substituted single/pair representation changes)."""
+    from chai_lab.chai1 import make_all_atom_feature_context  # type: ignore[import]
+
+    esm_cache = fasta_path.parent / "esm_cache"
+    return make_all_atom_feature_context(
+        fasta_file=fasta_path,
+        output_dir=esm_cache,
+        use_esm_embeddings=True,
+        esm_device=torch.device("cpu"),
+    )
+
+
 def chai1_decode_to_cif(
     single: torch.Tensor,        # [L, d_single] or [1, L, d_single], raw Chai-1 scale
     pair: torch.Tensor,          # [L, L, d_pair] or [1, L, L, d_pair], raw Chai-1 scale
@@ -228,18 +254,25 @@ def chai1_decode_to_cif(
     num_diffn_timesteps: int = 200,
     num_diffn_samples: int = 1,
     seed: int | None = None,
+    feature_context=None,
 ):
     """
     Decode a single/pair representation to 3D structure via Chai-1's real
     diffusion inference pipeline, substituting our own trunk representation
     in place of Chai-1's own sequence-derived one.
 
+    Args:
+        feature_context: optional pre-built context from
+            build_chai1_feature_context(fasta_path) — pass this when calling
+            in a loop over many samples for the SAME protein, to skip
+            rebuilding it (and re-running ESM) on every call. If None,
+            builds it fresh (fine for a single one-off decode).
+
     Returns the chai_lab StructureCandidates object. CIF files are written
     to output_dir/pred.model_idx_<i>.cif (one per num_diffn_samples).
     """
     try:
         import chai_lab.chai1 as chai1_module               # type: ignore[import]
-        from chai_lab.chai1 import make_all_atom_feature_context  # type: ignore[import]
     except ImportError as exc:
         raise ImportError(
             "chai-lab is not installed or not importable. "
@@ -255,15 +288,11 @@ def chai1_decode_to_cif(
     single = single.to(device).float()
     pair = pair.to(device).float()
 
-    esm_cache = fasta_path.parent / "esm_cache"
-    feature_context = make_all_atom_feature_context(
-        fasta_file=fasta_path,
-        output_dir=esm_cache,
-        use_esm_embeddings=True,
-        esm_device=torch.device("cpu"),
-    )
+    if feature_context is None:
+        feature_context = build_chai1_feature_context(fasta_path)
 
     real_load_exported = chai1_module.load_exported
+    device_key = str(device)
 
     class _FakeTrunk:
         """Stand-in for the real trunk module: ignores every input and
@@ -277,7 +306,10 @@ def chai1_decode_to_cif(
     def _patched_load_exported(comp_key: str, dev: torch.device):
         if comp_key == "trunk.pt":
             return _FakeTrunk()
-        return real_load_exported(comp_key, dev)
+        cache_key = (comp_key, device_key)
+        if cache_key not in _CHAI1_COMPONENT_CACHE:
+            _CHAI1_COMPONENT_CACHE[cache_key] = real_load_exported(comp_key, dev)
+        return _CHAI1_COMPONENT_CACHE[cache_key]
 
     output_dir.mkdir(parents=True, exist_ok=True)
     with patch.object(chai1_module, "load_exported", _patched_load_exported):
