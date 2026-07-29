@@ -296,11 +296,74 @@ def chai1_decode_to_cif(
 
 
 def extract_ca_from_cif(cif_path: Path) -> np.ndarray:
-    """Extract Cα coordinates from a chai_lab-written CIF file. Returns
-    float32 [n_ca, 3]."""
-    import MDAnalysis as mda  # cluster-only dependency; import lazily
-    u = mda.Universe(str(cif_path))
-    return u.select_atoms("name CA").positions.copy().astype(np.float32)
+    """
+    Extract Cα coordinates from a chai_lab-written CIF file.
+
+    MDAnalysis (as installed on the cluster, 2.9.0) does not support CIF as
+    a topology format — verified directly (`ValueError: 'CIF' isn't a valid
+    topology format`) rather than assumed — so this parses the mmCIF
+    `_atom_site` loop directly instead of pulling in a new CIF library.
+    Column order is read from the header block rather than hardcoded, since
+    mmCIF writers don't guarantee a fixed column order across versions.
+
+    Returns:
+        coords: float32 [n_ca, 3]
+    """
+    lines = Path(cif_path).read_text().splitlines()
+
+    columns: list[str] = []
+    rows: list[list[str]] = []
+    in_atom_site_loop = False
+
+    i, n = 0, len(lines)
+    while i < n:
+        stripped = lines[i].strip()
+
+        if stripped == "loop_":
+            j = i + 1
+            peek_columns = []
+            while j < n and lines[j].strip().startswith("_atom_site."):
+                peek_columns.append(lines[j].strip()[len("_atom_site."):])
+                j += 1
+            if peek_columns:
+                columns = peek_columns
+                in_atom_site_loop = True
+                i = j
+                continue
+            in_atom_site_loop = False
+            i += 1
+            continue
+
+        if in_atom_site_loop:
+            if stripped.startswith("ATOM") or stripped.startswith("HETATM"):
+                fields = stripped.split()
+                if len(fields) == len(columns):
+                    rows.append(fields)
+                i += 1
+                continue
+            in_atom_site_loop = False
+            i += 1
+            continue
+
+        i += 1
+
+    if not columns:
+        raise ValueError(f"No _atom_site loop found in {cif_path}")
+
+    atom_id_idx = columns.index("label_atom_id")
+    x_idx = columns.index("Cartn_x")
+    y_idx = columns.index("Cartn_y")
+    z_idx = columns.index("Cartn_z")
+
+    ca_coords = [
+        (float(row[x_idx]), float(row[y_idx]), float(row[z_idx]))
+        for row in rows
+        if row[atom_id_idx] == "CA"
+    ]
+    if not ca_coords:
+        raise ValueError(f"No CA atoms found in {cif_path}")
+
+    return np.array(ca_coords, dtype=np.float32)
 
 
 # ---------------------------------------------------------------------------
