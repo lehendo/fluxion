@@ -111,6 +111,47 @@ class TestGenerateEnsembleDenormalization:
         expected = expected_noise * std + mean
         assert torch.allclose(ensemble, expected, atol=1e-4)
 
+    def test_noise_scale_multiplies_z0_before_integration(self):
+        """With a zero-velocity model, z stays at noise_scale*z0 throughout,
+        so the final output must equal (noise_scale * raw_noise) * std +
+        mean — confirms noise_scale is applied to z0 itself, not as some
+        post-hoc rescaling of the final output."""
+        model = _ZeroVelocityModel(D_S)
+        pair = torch.randn(L, L, D_P)
+        mean = torch.zeros(D_S)
+        std = torch.ones(D_S)
+        norm_stats = {"mean": mean, "std": std}
+        noise_scale = 2.5
+
+        torch.manual_seed(7)
+        expected_noise = torch.randn(3, L, D_S) * noise_scale
+
+        torch.manual_seed(7)
+        ensemble = generate_ensemble(
+            model, pair, n_samples=3, norm_stats=norm_stats,
+            batch_size=3, n_steps=4, method="euler", device=torch.device("cpu"),
+            noise_scale=noise_scale,
+        )
+
+        assert torch.allclose(ensemble, expected_noise, atol=1e-4)
+
+    def test_noise_scale_default_is_unscaled(self):
+        """noise_scale defaults to 1.0 — must reproduce prior (pre-change)
+        behavior exactly for backward compatibility."""
+        model = _ZeroVelocityModel(D_S)
+        pair = torch.randn(L, L, D_P)
+        norm_stats = {"mean": torch.zeros(D_S), "std": torch.ones(D_S)}
+
+        torch.manual_seed(99)
+        expected_noise = torch.randn(3, L, D_S)
+
+        torch.manual_seed(99)
+        ensemble = generate_ensemble(
+            model, pair, n_samples=3, norm_stats=norm_stats,
+            batch_size=3, n_steps=4, method="euler", device=torch.device("cpu"),
+        )
+        assert torch.allclose(ensemble, expected_noise, atol=1e-4)
+
     def test_denormalization_changes_scale_as_expected(self):
         """Sanity check: with a nontrivial std, the generated ensemble's
         scale should reflect that std, not stay at unit noise scale."""

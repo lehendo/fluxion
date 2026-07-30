@@ -56,6 +56,7 @@ def generate_ensemble(
     method: str = "euler",
     device: torch.device | None = None,
     seed: int | None = None,
+    noise_scale: float = 1.0,
 ) -> torch.Tensor:
     """
     Draw n_samples i.i.d. equilibrium-ensemble conformations by integrating
@@ -64,6 +65,16 @@ def generate_ensemble(
     Samples are drawn in chunks of at most `batch_size` to bound peak GPU
     memory for large ensembles (the field convention is ~1,000 samples per
     protein for evaluation, e.g. Mac-Diff/BioEmu).
+
+    Args:
+        noise_scale: multiplier on z0's standard deviation (default 1.0 =
+            standard N(0,I), matching training). Diagnostic use: if
+            evaluation shows the generated ensemble's diversity is a
+            uniformly-scaled-down version of the real ensemble's (strong
+            RMSF shape correlation, suppressed magnitude — variance
+            underestimation, not broken/off-manifold generation), sampling
+            with noise_scale > 1 tests whether that's recoverable at
+            inference time without retraining (2026-07 diagnosis).
 
     Returns:
         ensemble: float32 [n_samples, L, d_single], raw Chai-1 latent scale.
@@ -79,7 +90,7 @@ def generate_ensemble(
     remaining = n_samples
     while remaining > 0:
         b = min(batch_size, remaining)
-        z0 = torch.randn(b, L, model.d_single)
+        z0 = torch.randn(b, L, model.d_single) * noise_scale
         pair_b = pair.unsqueeze(0).expand(b, -1, -1, -1)
 
         traj, _ = rollout(
@@ -133,6 +144,10 @@ def main() -> None:
     parser.add_argument("--no-ema",      action="store_true",
                         help="Use raw model weights instead of EMA")
     parser.add_argument("--seed",        default=None, type=int)
+    parser.add_argument("--noise-scale", default=1.0,  type=float,
+                        help="Multiplier on z0 std (default 1.0). See "
+                             "generate_ensemble() docstring — diagnostic use "
+                             "for testing variance-underestimation recovery.")
     parser.add_argument("--out",         required=True, type=Path)
     parser.add_argument("--device",      default="cuda")
     args = parser.parse_args()
@@ -165,6 +180,7 @@ def main() -> None:
         method=args.method,
         device=device,
         seed=args.seed,
+        noise_scale=args.noise_scale,
     )
     elapsed = time.perf_counter() - t0
     print(f"  ensemble shape: {tuple(ensemble.shape)}  ({elapsed:.1f}s, "
@@ -179,6 +195,7 @@ def main() -> None:
         "n_steps":     args.n_steps,
         "checkpoint":  str(args.checkpoint),
         "seed":        args.seed,
+        "noise_scale": args.noise_scale,
     }, args.out)
     print(f"[sample_ensemble] Saved ensemble → {args.out}", flush=True)
 
