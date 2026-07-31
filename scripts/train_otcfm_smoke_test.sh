@@ -11,6 +11,7 @@
 # retrain.
 #SBATCH --job-name=flux_otcfm_smoke
 #SBATCH --partition=eng-research-gpu
+#SBATCH --account=jimeng-cs-eng
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:A10:1
