@@ -9,15 +9,25 @@
 #
 # Throwaway checkpoint/log paths — not meant to be resumed into the real
 # retrain.
+#
+# GPU sizing note (2026-07): an earlier attempt on eng-research-gpu's A10
+# (22GB) hit a CUDA OOM at `pair[order]` — the reordering copies made by OT
+# coupling (z1[order], pair[order], padding_mask[order]) are transient
+# duplicates, and `pair` alone can be up to [16, 768, 768, 256] float32
+# (~39GB) if a batch happens to include the largest-crop protein (1b25_D) —
+# doubling transiently during the reorder. Matching the smoke test to the
+# SAME GPU class the real retrain uses (H200, 80-141GB) rather than a
+# smaller/faster-to-schedule GPU, so this is an actually representative
+# test of the real training codepath at real scale.
 #SBATCH --job-name=flux_otcfm_smoke
-#SBATCH --partition=eng-research-gpu
-#SBATCH --account=jimeng-cs-eng
+#SBATCH --partition=IllinoisComputes-GPU
+#SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:A10:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=2-00:00:00
+#SBATCH --gres=gpu:H200:1
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=256G
+#SBATCH --time=3-00:00:00
 #SBATCH --output=logs/otcfm_smoke_%j.out
 #SBATCH --error=logs/otcfm_smoke_%j.err
 
