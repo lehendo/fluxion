@@ -8,7 +8,15 @@
 # 256), likely a substantially larger/different protein.
 #
 # Same baseline settings as the original 1bxy_A run (Euler, noise_scale=1.0,
-# n_steps=100, 1000 samples) for direct comparability.
+# n_steps=100) for direct comparability, EXCEPT n_samples reduced to 300:
+# measured real decode rate on this larger protein (768 vs 256 tokens) is
+# ~40.5s/sample (~4x slower than 1bxy_A), so 1000 samples would need ~11+
+# hours and blow the original 4h budget with no partial output saved
+# (evaluate_ensemble.py only writes results at the end of the loop) —
+# resubmitted 2026-07 after cancelling the first, doomed-to-timeout attempt
+# (job 9715471) before it wasted more compute. 300 samples is still
+# statistically decisive for a yes/no generalization check — the 1bxy_A
+# signature wasn't borderline.
 #SBATCH --job-name=flux_eval_1b25D
 #SBATCH --partition=IllinoisComputes-GPU
 #SBATCH --account=jimeng-ic
@@ -17,7 +25,7 @@
 #SBATCH --gres=gpu:H200:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --time=04:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=logs/eval_1b25D_%j.out
 #SBATCH --error=logs/eval_1b25D_%j.err
 
@@ -40,7 +48,7 @@ python inference/sample_ensemble.py \
     --checkpoint  "$CHECKPOINT" \
     --latents-dir "$LATENTS_DIR" \
     --protein-id  "$PROTEIN_ID" \
-    --n-samples   1000 \
+    --n-samples   300 \
     --batch-size  32 \
     --n-steps     100 \
     --method      euler \
@@ -53,7 +61,7 @@ python scripts/evaluate_ensemble.py \
     --latents-dir "$LATENTS_DIR" \
     --atlas-raw   "$ATLAS_RAW" \
     --out-dir     "${OUT_DIR}_chai1" \
-    --n-real-samples 1000 \
+    --n-real-samples 300 \
     --decode-mode chai1 \
     --num-diffn-timesteps 200 \
     --device      cuda
