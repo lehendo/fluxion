@@ -10,13 +10,13 @@
 # Throwaway checkpoint/log paths — not meant to be resumed into the real
 # retrain.
 #SBATCH --job-name=flux_otcfm_smoke
-#SBATCH --partition=scavenger
+#SBATCH --partition=eng-research-gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:QuadroRTX6000:1
+#SBATCH --gres=gpu:A10:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=1-00:00:00
+#SBATCH --time=2-00:00:00
 #SBATCH --output=logs/otcfm_smoke_%j.out
 #SBATCH --error=logs/otcfm_smoke_%j.err
 
