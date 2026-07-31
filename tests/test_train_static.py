@@ -23,13 +23,14 @@ from training.train_static import handle_sigusr1
 import training.train_static as train_static
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
+from training.ot_coupling import compute_ot_coupling
 from data_pipeline.dataset import (
     build_multi_protein_static_dataset,
     collate_fn_static,
 )
 
 
-B, L, D_S, D_P = 2, 6, 16, 8
+B, L, D_S, D_P = 4, 6, 16, 8
 N_HEADS, D_FF, D_FREQ = 2, 32, 16
 
 
@@ -132,3 +133,67 @@ class TestStaticTrainingLossIntegration:
         assert len(sample) == 3  # (single, pair, frame_idx) — not ((z0, z1), pair, frame_idx)
         single, pair, frame_idx = sample
         assert single.shape == (L, D_S)
+
+
+class TestOtCouplingIntegration:
+    """Reproduces main()'s inner-step OT-coupling block exactly: z0 =
+    randn_like(z1); order = compute_ot_coupling(...); reorder z1, pair,
+    padding_mask — the critical property being that ALL THREE are permuted
+    identically, or the model would train against a mismatched (wrong
+    protein's) conditioning signal."""
+
+    def test_forward_backward_with_ot_coupling(self, tmp_path):
+        _make_protein_dir(tmp_path, "protA", n_frames=8, L=L, d_s=D_S)
+        dataset = build_multi_protein_static_dataset(tmp_path, protein_ids=["protA"])
+        batch = [dataset[i] for i in range(B)]
+        z1, pair, _fidx, padding_mask = collate_fn_static(batch)
+
+        model = _tiny_model()
+        matcher = FlowMatcher()
+
+        z0 = torch.randn_like(z1)
+        order = compute_ot_coupling(z0, z1, padding_mask)
+        z1_c           = z1[order]
+        pair_c         = pair[order]
+        padding_mask_c = padding_mask[order]
+
+        loss = matcher.compute_loss(model, z0, z1_c, pair_c, padding_mask_c)
+        loss.backward()
+
+        assert torch.isfinite(loss)
+        assert any(p.grad is not None and p.grad.abs().sum() > 0 for p in model.parameters())
+
+    def test_pair_and_padding_mask_stay_matched_to_reordered_z1(self, tmp_path):
+        """The critical correctness property: if z1[i] ends up at position j
+        after reordering, that position's pair conditioning and padding
+        mask MUST also be the ones originally paired with z1[i] — not
+        whichever happened to already be at position j. Uses distinctly
+        tagged pair/padding-mask per original sample so any mismatch after
+        reordering is directly observable."""
+        z0 = torch.randn(B, L, D_S)
+        z1 = torch.randn(B, L, D_S)
+        pair = torch.stack([
+            torch.full((L, L, D_P), float(i)) for i in range(B)
+        ])
+        # Distinct padding pattern per sample so mismatches are observable
+        # in the mask too, not just the pair tensor.
+        padding_mask = torch.zeros(B, L, dtype=torch.bool)
+        for i in range(B):
+            padding_mask[i, i:] = True  # sample i: first i positions real
+
+        order = compute_ot_coupling(z0, z1, padding_mask)
+        z1_c           = z1[order]
+        pair_c         = pair[order]
+        padding_mask_c = padding_mask[order]
+
+        for new_pos in range(B):
+            original_i = order[new_pos].item()
+            # pair_c[new_pos] must be the ORIGINAL sample original_i's pair
+            # (tagged with value float(original_i)), not e.g. pair[new_pos].
+            assert torch.allclose(pair_c[new_pos], torch.full((L, L, D_P), float(original_i)))
+            # Same check for padding_mask via its distinct per-sample pattern.
+            expected_mask = torch.zeros(L, dtype=torch.bool)
+            expected_mask[original_i:] = True
+            assert torch.equal(padding_mask_c[new_pos], expected_mask)
+            # And z1 itself must match what z1[order] would give directly.
+            assert torch.allclose(z1_c[new_pos], z1[original_i])

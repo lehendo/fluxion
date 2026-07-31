@@ -8,6 +8,20 @@ already generic over what z0 is), checkpointing, EMA, and the gate-LR-
 multiplier optimizer setup from training/train.py; only the dataset and the
 z0 source (freshly sampled noise instead of a real previous frame) differ.
 
+2026-07: --ot-coupling (default on) makes "OT-CFM" accurate — prior to this,
+z0/z1 were paired by arbitrary batch index, which is plain conditional flow
+matching, not the actual optimal-transport-coupled variant the name implies.
+Added after diagnosing the deployed static-ensemble model's generated
+ensembles showing suppressed conformational diversity (uniform variance
+underestimation on a small protein; generated samples landing outside the
+real ensemble's occupied conformational modes on a larger one) — a
+signature consistent with the well-known mode-averaging failure of MSE
+regression against an arbitrarily-paired, ambiguous multimodal target. See
+training/ot_coupling.py for the mechanism and docs/ for the full diagnostic
+chain (RK4-vs-Euler and noise-rescaling sampling-time interventions were
+both ruled out first, confirming this is a training-time, not sampling-time,
+issue).
+
 Launch with torchrun:
     torchrun --nproc_per_node=NUM_GPUS training/train_static.py \
         --scratch-dir /scratch/arjunc4/fluxion_data \
@@ -34,6 +48,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
 from training.checkpoint import save_checkpoint, load_checkpoint
+from training.ot_coupling import compute_ot_coupling
 from training.train import (
     get_param_groups,
     compute_group_grad_norms,
@@ -94,7 +109,7 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # 4. Resume from checkpoint (before wrapping in DDP)
     # ------------------------------------------------------------------
-    checkpoint_dir = Path(args.scratch_dir) / "checkpoints_static"
+    checkpoint_dir = Path(args.scratch_dir) / args.checkpoint_dir_name
     step, start_epoch = load_checkpoint(
         checkpoint_dir / "checkpoint.pt",
         model,
@@ -139,7 +154,7 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     model.train()
 
-    loss_log_path = Path(args.scratch_dir) / "loss_log_static.csv"
+    loss_log_path = Path(args.scratch_dir) / args.loss_log_name
     if global_rank == 0 and not loss_log_path.exists():
         with open(loss_log_path, "w") as f:
             f.write("step,epoch,loss,lr,gate_lr,total_grad_norm,gate_grad_norm\n")
@@ -170,6 +185,20 @@ def main(args: argparse.Namespace) -> None:
             # FlowMatcher itself needs no changes: it is already agnostic
             # to what z0 represents.
             z0 = torch.randn_like(z1)
+
+            if args.ot_coupling:
+                # Minibatch OT-CFM: re-pair z1 (and everything that must
+                # stay matched to the right protein/frame — its pair
+                # conditioning and padding mask) to z0's OT-optimal partner
+                # instead of the arbitrary index-order pairing. See
+                # training/ot_coupling.py — this is what makes "OT-CFM" an
+                # accurate name for the training objective, and is the
+                # diagnosed fix for the variance-underestimation /
+                # mode-mismatch found in the 2026-07 static-ensemble eval.
+                order = compute_ot_coupling(z0, z1, padding_mask)
+                z1           = z1[order]
+                pair         = pair[order]
+                padding_mask = padding_mask[order]
 
             optimizer.zero_grad(set_to_none=True)
 
@@ -255,5 +284,26 @@ if __name__ == "__main__":
                         help="Checkpoint and exit after this many total steps "
                              "(0 = unlimited, run full --epochs). Use for short "
                              "diagnostic runs.")
+    parser.add_argument("--ot-coupling", action=argparse.BooleanOptionalAction, default=True,
+                        help="Minibatch optimal-transport coupling (Tong et al. "
+                             "2023) — re-pairs z1 to each z0's OT-optimal partner "
+                             "within the minibatch instead of arbitrary index-order "
+                             "pairing. Default on; this is what makes the 'OT-CFM' "
+                             "name accurate. Disable with --no-ot-coupling for an "
+                             "ablation against the original (pre-2026-07) behavior.")
+    parser.add_argument("--checkpoint-dir-name", type=str, default="checkpoints_static",
+                        help="Subdirectory of --scratch-dir to save/resume "
+                             "checkpoints from (default 'checkpoints_static'). "
+                             "Override this for a fresh run that must NOT resume "
+                             "from a prior run's checkpoint.pt in that directory "
+                             "(e.g. a retrain with different training behavior, "
+                             "like enabling --ot-coupling — resuming from weights "
+                             "trained under the old pairing scheme would not be a "
+                             "clean comparison).")
+    parser.add_argument("--loss-log-name", type=str, default="loss_log_static.csv",
+                        help="Filename (under --scratch-dir) to append the loss "
+                             "log to (default 'loss_log_static.csv'). Override "
+                             "alongside --checkpoint-dir-name to keep separate "
+                             "runs' logs from mixing together.")
     args = parser.parse_args()
     main(args)
