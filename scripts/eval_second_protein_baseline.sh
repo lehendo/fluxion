@@ -17,17 +17,26 @@
 # (job 9715471) before it wasted more compute. 300 samples is still
 # statistically decisive for a yes/no generalization check — the 1bxy_A
 # signature wasn't borderline.
-#SBATCH --job-name=flux_eval_1b25D
-#SBATCH --partition=IllinoisComputes-GPU
-#SBATCH --account=jimeng-ic
+#
+# 2026-07 resubmission: the previous attempt (job 9724697) successfully
+# decoded 295/300 samples via Chai-1 (the expensive, ~3h part) but crashed
+# in the final aggregation step on 5 samples with a minority atom count —
+# now fixed (evaluate_ensemble.py resumes from existing CIFs and filters
+# minority-shape outliers instead of crashing). Stage 1 (ensemble
+# generation) is INTENTIONALLY SKIPPED here: it has no fixed seed, so
+# rerunning it would silently desync the ensemble from the already-decoded
+# CIFs (which are matched to it by index, not content). Reuses the
+# already-generated results/static_ensemble_1b25_D/1b25_D_ensemble.pt as-is.
+#SBATCH --job-name=flux_eval_1b25D_resume
+#SBATCH --partition=scavenger
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:H200:1
+#SBATCH --gres=gpu:QuadroRTX6000:1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
-#SBATCH --time=06:00:00
-#SBATCH --output=logs/eval_1b25D_%j.out
-#SBATCH --error=logs/eval_1b25D_%j.err
+#SBATCH --time=1-00:00:00
+#SBATCH --output=logs/eval_1b25D_resume_%j.out
+#SBATCH --error=logs/eval_1b25D_resume_%j.err
 
 mkdir -p logs
 
@@ -36,26 +45,11 @@ conda activate fluxion
 cd /u/arjunc4/fluxion
 
 PROTEIN_ID="1b25_D"
-CHECKPOINT=/scratch/arjunc4/fluxion_data/checkpoints_static/checkpoint.pt
 LATENTS_DIR=/scratch/arjunc4/fluxion_data/latents
 ATLAS_RAW=/scratch/arjunc4/atlas_raw
 OUT_DIR=results/static_ensemble_${PROTEIN_ID}
 
-mkdir -p "$OUT_DIR"
-
-echo "=== Stage 1: generate ensemble (Euler, noise_scale=1.0, same as original baseline) ==="
-python inference/sample_ensemble.py \
-    --checkpoint  "$CHECKPOINT" \
-    --latents-dir "$LATENTS_DIR" \
-    --protein-id  "$PROTEIN_ID" \
-    --n-samples   300 \
-    --batch-size  32 \
-    --n-steps     100 \
-    --method      euler \
-    --out         "$OUT_DIR/${PROTEIN_ID}_ensemble.pt" \
-    --device      cuda
-
-echo "=== Stage 2: evaluate via the validated Chai-1 diffusion decoder ==="
+echo "=== Stage 2: evaluate via the validated Chai-1 diffusion decoder (resume) ==="
 python scripts/evaluate_ensemble.py \
     --ensemble    "$OUT_DIR/${PROTEIN_ID}_ensemble.pt" \
     --latents-dir "$LATENTS_DIR" \
