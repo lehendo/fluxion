@@ -81,6 +81,34 @@ def align_ensemble(coords: np.ndarray, ref: np.ndarray) -> np.ndarray:
     return np.stack([kabsch_align(c, ref) for c in coords], axis=0)
 
 
+def filter_majority_shape(coords_list: list[np.ndarray]) -> tuple[np.ndarray, int]:
+    """
+    Stack a list of per-sample [n_atoms_i, 3] coordinate arrays into
+    [N, n_atoms, 3], excluding any whose atom count doesn't match the
+    majority (mode) count.
+
+    A small fraction of Chai-1 decodes can come back with a different atom
+    count than the rest — an artifact of Chai-1's own token-existence
+    masking reacting to an unusual conditioning input on that particular
+    sample, not a parser bug. np.stack would otherwise raise on the first
+    such mismatch and discard every already-decoded sample (a real cost:
+    each decode is a genuine multi-step diffusion sampling run). Excluding
+    the minority-shape outliers keeps the rest of the (still fully
+    decisive) ensemble usable.
+
+    Returns:
+        stacked:    float32 [N_kept, n_atoms, 3]
+        n_excluded: number of samples dropped for having a minority shape
+    """
+    shape_counts: dict[int, int] = {}
+    for c in coords_list:
+        shape_counts[c.shape[0]] = shape_counts.get(c.shape[0], 0) + 1
+    majority_n = max(shape_counts, key=shape_counts.get)
+    kept = [c for c in coords_list if c.shape[0] == majority_n]
+    n_excluded = len(coords_list) - len(kept)
+    return np.stack(kept, axis=0).astype(np.float32), n_excluded
+
+
 # ---------------------------------------------------------------------------
 # Diversity (mode-collapse detector)
 # ---------------------------------------------------------------------------
@@ -231,7 +259,7 @@ def run(args: argparse.Namespace) -> dict:
     total_real = len(frame_idxs)
     print(f"  {total_real} real frames across replicas {sorted(set(replica_ids))}", flush=True)
 
-    nn_metrics: dict = {}
+    mode_metrics: dict = {}
     if args.decode_mode == "nn":
         print("[evaluate_ensemble] Nearest-neighbor decoding generated ensemble …",
               flush=True)
@@ -241,7 +269,7 @@ def run(args: argparse.Namespace) -> dict:
         unique_frac = len(set(zip(nn_frames.tolist(), nn_replicas.tolist()))) / N
         print(f"  NN mean distance={nn_distances.mean():.4f}  "
               f"unique-frame fraction={unique_frac:.3f}", flush=True)
-        nn_metrics = {
+        mode_metrics = {
             "nn_mean_distance": float(nn_distances.mean()),
             "nn_max_distance": float(nn_distances.max()),
             "unique_nn_frame_fraction": float(unique_frac),
@@ -270,15 +298,29 @@ def run(args: argparse.Namespace) -> dict:
         for i in range(N):
             if i % 10 == 0:
                 print(f"  Chai-1 decode: {i}/{N}", flush=True)
+            sample_dir = chai1_out_dir / f"sample_{i:04d}"
+            cached_cif = sample_dir / "pred.model_idx_0.cif"
+            if cached_cif.exists():
+                # Resume: skip re-decoding (the expensive step) if this
+                # sample was already decoded by a prior run of this script
+                # (e.g. one that crashed later, during aggregation).
+                gen_coords_list.append(extract_ca_from_cif(cached_cif))
+                continue
             candidates = chai1_decode_to_cif(
-                ensemble[i], pair, fasta_path,
-                chai1_out_dir / f"sample_{i:04d}",
+                ensemble[i], pair, fasta_path, sample_dir,
                 device, num_diffn_timesteps=args.num_diffn_timesteps,
                 num_diffn_samples=1, seed=args.seed + i,
                 feature_context=feature_context,
             )
             gen_coords_list.append(extract_ca_from_cif(candidates.cif_paths[0]))
-        gen_coords = np.stack(gen_coords_list, axis=0).astype(np.float32)
+
+        gen_coords, n_excluded = filter_majority_shape(gen_coords_list)
+        if n_excluded:
+            print(f"[evaluate_ensemble] Excluding {n_excluded}/{len(gen_coords_list)} "
+                  f"decoded samples with a minority atom count "
+                  f"(Chai-1's own masking on an unusual conditioning input)", flush=True)
+        mode_metrics["n_generated_usable"] = gen_coords.shape[0]
+        mode_metrics["n_excluded_shape_mismatch"] = n_excluded
 
     print(f"[evaluate_ensemble] Sampling {args.n_real_samples} real MD reference frames …",
           flush=True)
@@ -315,7 +357,7 @@ def run(args: argparse.Namespace) -> dict:
         "decode_mode": args.decode_mode,
         "n_generated": N,
         "n_real_reference": n_real,
-        **nn_metrics,
+        **mode_metrics,
         "diversity_generated_mean_A": float(gen_diversity.mean()),
         "diversity_generated_std_A": float(gen_diversity.std()),
         "diversity_real_mean_A": float(real_diversity.mean()),

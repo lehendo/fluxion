@@ -31,6 +31,7 @@ from evaluate_ensemble import (  # noqa: E402
     fit_pca,
     project_pca,
     histogram_overlap_js,
+    filter_majority_shape,
 )
 
 
@@ -160,3 +161,58 @@ class TestHistogramOverlapJS:
             cluster_a, cluster_a + np.array([100.0, 100.0], dtype=np.float32)
         )
         assert js_identical < js_partial < js_disjoint
+
+
+class TestFilterMajorityShape:
+    """2026-07: a real run hit np.stack raising on a handful of Chai-1
+    decodes coming back with a different atom count (masking artifact on
+    unusual conditioning inputs), discarding ~3 hours of already-completed
+    diffusion sampling for the other 295/300 samples. This is the fix."""
+
+    def test_all_same_shape_no_exclusions(self):
+        rng = np.random.default_rng(0)
+        coords_list = [rng.standard_normal((10, 3)).astype(np.float32) for _ in range(5)]
+        stacked, n_excluded = filter_majority_shape(coords_list)
+        assert stacked.shape == (5, 10, 3)
+        assert n_excluded == 0
+
+    def test_minority_shape_excluded_majority_kept(self):
+        rng = np.random.default_rng(1)
+        majority = [rng.standard_normal((10, 3)).astype(np.float32) for _ in range(8)]
+        minority = [rng.standard_normal((7, 3)).astype(np.float32) for _ in range(2)]
+        stacked, n_excluded = filter_majority_shape(majority + minority)
+        assert stacked.shape == (8, 10, 3)
+        assert n_excluded == 2
+
+    def test_multiple_distinct_minority_shapes_all_excluded(self):
+        """Matches the real incident: several DIFFERENT off-majority shapes
+        (613, 522, 224, 245, 294 vs. a majority of 619) — not just one
+        outlier value repeated."""
+        rng = np.random.default_rng(2)
+        majority = [rng.standard_normal((619, 3)).astype(np.float32) for _ in range(295)]
+        outliers = [
+            rng.standard_normal((n, 3)).astype(np.float32)
+            for n in (613, 522, 224, 245, 294)
+        ]
+        stacked, n_excluded = filter_majority_shape(majority + outliers)
+        assert stacked.shape == (295, 619, 3)
+        assert n_excluded == 5
+
+    def test_output_dtype_is_float32(self):
+        coords_list = [np.random.randn(5, 3).astype(np.float64) for _ in range(3)]
+        stacked, _ = filter_majority_shape(coords_list)
+        assert stacked.dtype == np.float32
+
+    def test_tie_picks_one_valid_majority_deterministically(self):
+        """With an exact tie, any single consistent choice is acceptable —
+        just confirm it doesn't crash and returns internally consistent
+        counts (kept + excluded == total)."""
+        coords_list = [
+            np.zeros((5, 3), dtype=np.float32),
+            np.zeros((5, 3), dtype=np.float32),
+            np.zeros((6, 3), dtype=np.float32),
+            np.zeros((6, 3), dtype=np.float32),
+        ]
+        stacked, n_excluded = filter_majority_shape(coords_list)
+        assert stacked.shape[0] + n_excluded == 4
+        assert stacked.shape[0] == 2
