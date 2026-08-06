@@ -1,8 +1,15 @@
 """
 fluxion/training/flow_matching.py
 
-Optimal Transport Conditional Flow Matching (OT-CFM) for consecutive MD frames.
-Learns the vector field driving conformational dynamics.
+Conditional Flow Matching (CFM) loss: regresses the straight-line velocity
+field between a source z0 and target z1 in Chai-1 latent space. Deliberately
+agnostic to what z0/z1 represent — train.py pairs z0=frame i, z1=frame i+1
+(the original temporal formulation); train_static.py pairs z0=fresh Gaussian
+noise, z1=an equilibrium-ensemble frame (the current static-ensemble
+formulation, see train_static.py's module docstring). Optimal-transport
+coupling of (z0, z1) pairs, when used, happens upstream of this class (see
+ot_coupling.py) — this module only computes the loss for whatever pairing
+it's handed.
 """
 
 import torch
@@ -28,10 +35,11 @@ class FlowMatcher:
         """
         Args:
             model:        FluxionDiT network
-            z0:           Token representations at frame i   [B, L, d_single]
-            z1:           Token representations at frame i+1 [B, L, d_single]
-            pair:         Static structural conditioning      [B, L, L, d_pair]
-            padding_mask: True = padded position             [B, L] bool or None
+            z0:           Source point in latent space (noise or frame i)   [B, L, d_single]
+            z1:           Target point in latent space (an equilibrium
+                          sample or frame i+1)                              [B, L, d_single]
+            pair:         Structural conditioning                          [B, L, L, d_pair]
+            padding_mask: True = padded position                          [B, L] bool or None
 
         Returns:
             Scalar MSE loss averaged over valid (non-padded) positions.

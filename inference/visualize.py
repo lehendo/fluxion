@@ -11,9 +11,10 @@ Two decoding strategies
    required for decoding; runs in seconds.  Useful for evaluation (does the
    rollout trace known conformations?) and quick visualization.
 
-2. Chai-1 structure module (chai1):  inject the predicted single representation
-   into Chai-1's diffusion decoder to produce genuine 3D coordinates.
-   Requires ~40 GB GPU memory and ~2–4 s/step.
+2. Chai-1 diffusion module (chai1):  substitute the predicted single/pair
+   representation into Chai-1's real trunk output and run its unmodified
+   diffusion inference pipeline (chai1_decode_to_cif, below) to produce
+   genuine 3D coordinates. Requires ~40 GB GPU memory and ~2–4 s/step.
 
 Usage
 -----

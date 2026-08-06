@@ -29,7 +29,7 @@ python inference/infer.py \\
 Skip the ODE rollout if rollout.pt already exists (useful for re-decoding):
     --skip-rollout
 
-Use Chai-1 structure module instead of NN decoder:
+Use Chai-1 diffusion module instead of NN decoder:
     --mode chai1
 """
 

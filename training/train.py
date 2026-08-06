@@ -1,7 +1,19 @@
 """
 fluxion/training/train.py
 
-DDP Training Loop with OT-CFM, EMA, and SLURM Signal Handling.
+DDP training loop for the ORIGINAL temporal formulation: CFM from frame i to
+frame i+1 (z0=frame i, z1=frame i+1), EMA, and SLURM signal handling.
+
+2026-07: this formulation's diagnostic chain (static/linear/velocity/
+nonlinear probes on frame-to-frame predictability, all ~0% signal at every
+lag tested) found no exploitable frame-to-frame dynamics signal in
+single/paired frozen Chai-1 snapshots — see project memory for the full
+chain. The project pivoted to the static-ensemble formulation in
+train_static.py (noise -> equilibrium sample, no frame pairing), which is
+the actively trained/evaluated model as of 2026-07. This file is kept for
+its still-valid infra (DDP setup, checkpointing, gate-LR optimizer groups —
+all reused by train_static.py) and as a reference/ablation baseline, not
+because the temporal objective is expected to work.
 
 Launch with torchrun:
     torchrun --nproc_per_node=NUM_GPUS training/train.py \
