@@ -86,6 +86,17 @@
 
 **Implication for the novelty claims above:** none of this changes the four novelty criteria or the competitor table — OT coupling was always claimed as part of "OT-CFM"; this addendum documents that the claim is now actually true in the implementation, not merely in the name, and explains a real implementation gap that existed for most of the project's history. This is exactly the kind of thing a careful reviewer or reproduction attempt would have caught, so it needed fixing regardless of whether it explains the observed diversity deficit.
 
+## Addendum (2026-08-13): dataset scale vs. the competitor set
+
+**ATLAS's true total is 1,390 proteins** (Vander Meersche et al., *Nucleic Acids Research* 2024) — corrects an earlier, wrong figure of 2,070 that had been circulating in project notes.
+
+Checked (web search, sourced) how much of ATLAS the closest competitors actually use, since Fluxion's current pilot is a 19-protein subset (~1.4% of ATLAS):
+- **MDGen** (NeurIPS 2024): 1,265 train / 39 val / 82 test — full ATLAS, held out by PDB release date.
+- **ConfRover** (NeurIPS 2025): ~1,300 proteins (essentially full ATLAS), held out by protein identity.
+- **Mac-Diff** (Nature Machine Intelligence 2026, the closest NMI precedent — see 2026-07-16 addendum above): fine-tuned on 1,303 ATLAS trajectories + 371 GPCRmd, on top of 619,045-pair PDB pretraining.
+
+All three train/evaluate at essentially full-ATLAS scale with a genuine held-out split. This doesn't affect the novelty verdict above (novelty is about the architecture/objective/representation combination, not dataset scale), but it does set the real bar for what "comparable" means once Fluxion moves from diagnostics to a submittable result: the 19-protein pilot is correctly scoped for cheap formulation-testing (e.g. resolving whether real temporal signal exists post-extraction-fix — see docs/code_review_2026-08.md), but reviewers at any venue on the list in `project_publication_strategy.md` will expect near-full-ATLAS scale with a real held-out split before treating benchmark comparisons against MDGen/ConfRover/Mac-Diff as apples-to-apples.
+
 ## What this doesn't resolve
 
 This review confirms the *idea* is not already done, verified now with direct primary-source quotes rather than a surface-level pass. It does not resolve whether Fluxion, once reformulated to use a longer time lag or explicit temporal conditioning, will actually produce a working, competitive model — that's still the open question from the pilot, unchanged by this literature review, and the reason the full paper design doc is being held until we have that result (per plan: option 2). The static-ensemble pivot (2026-07-16 addendum) carries the same caveat, now sharpened by the 2026-07-31 addendum above: novelty of the *idea* is confirmed, but whether the OT-coupling retrain actually produces a competitive, non-mode-collapsed ensemble is still an open, unresolved question pending that retrain's completion and re-evaluation against the same real-Chai-1-decode pipeline that surfaced the original deficit — do not assume it's fixed until that evaluation is in.
