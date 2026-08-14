@@ -1,11 +1,22 @@
-torch
-torchaudio
-torchvision
-torchdiffeq
-MDAnalysis
-numpy
-pandas
-wandb
-h5py
-filelock
-chai-lab
+# Pinned to the versions verified working together on the cluster (fluxion
+# conda env, Python 3.10.20, 2026-08-13) -- unpinned installs previously let
+# pip silently resolve a mismatched/CPU-only torch build or an incompatible
+# chai-lab version. See scripts/setup_env.sh for the full environment
+# recreation (conda-level Python version + the one non-pip dependency,
+# aria2, which this file cannot express).
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
+torchaudio==2.11.0
+torchvision==0.21.0
+torchdiffeq==0.2.5
+MDAnalysis==2.9.0
+numpy==1.26.4
+pandas==2.3.3
+wandb==0.28.1
+h5py==3.16.0
+filelock==3.32.2
+chai-lab==0.6.1
+scipy==1.15.3
+tqdm==4.70.0
+requests==2.34.2
+matplotlib==3.10.9
