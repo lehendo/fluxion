@@ -4,9 +4,20 @@ data_pipeline/extract_pairs.py
 Extracts one static pair tensor per protein (frame 0 of replica 1) and saves
 it as <out_dir>/<protein_id>/pair.pt.
 
-Because pair representations encode sequence-level co-evolution and topology
-rather than per-frame conformation, one tensor per protein is sufficient for
-conditioning the DiT during training.
+2026-08 fix: now routes frame 0's real coordinates through the same
+name-based atom correspondence + self-template conditioning fix as
+extract_latents.py (see data_pipeline/chai1_conditioning.py and
+docs/code_review_2026-08.md Sec 1) instead of the old, inert coordinate
+patch. Previously the trunk never actually saw frame 0's real structure
+either, so this pair.pt was computed the same way a sequence-only structure
+prediction would be.
+
+Still extracts only ONE frame (frame 0, replica 1) per protein — the review
+(Sec 5.3) separately flags that a genuinely per-frame-varying pair signal
+would need per-frame pair extraction (or an explicit reframing as static
+context), which is follow-up work, not addressed by this fix. What this fix
+does address: the single extracted pair now at least reflects a real
+structure, not a degenerate/inert one.
 
 Usage (single protein, interactive debug):
     python data_pipeline/extract_pairs.py \
@@ -36,8 +47,11 @@ from chai_lab.chai1 import load_exported
 from data_pipeline.extract_latents import (
     _get_sequence,
     _write_fasta,
-    _patch_atom_coords,
     run_trunk_pipeline,
+)
+from data_pipeline.chai1_conditioning import (
+    build_atom_correspondence,
+    inject_frame_conditioning,
 )
 
 
@@ -77,8 +91,9 @@ def extract_pair_for_protein(
 
     print(f"[{protein_id}] Loading frame 0...", flush=True)
     u = mda.Universe(str(pdb_path), str(xtc_path))
+    all_atoms = u.select_atoms("protein")  # same selection _get_sequence uses
     u.trajectory[0]  # seek to frame 0
-    positions = u.atoms.positions.copy()  # [N_atoms, 3]
+    positions = all_atoms.positions.copy()  # [N_atoms, 3]
 
     # Build Chai-1 feature context from sequence
     esm_cache = out_protein_dir / "esm_cache"
@@ -96,7 +111,10 @@ def extract_pair_for_protein(
         use_esm_embeddings=True,
         esm_device=device,
     )
-    feature_context = _patch_atom_coords(feature_context, positions)
+    chai_to_mda = build_atom_correspondence(
+        all_atoms.resindices, all_atoms.names, feature_context.structure_context
+    )
+    feature_context = inject_frame_conditioning(feature_context, positions, chai_to_mda)
 
     print(f"[{protein_id}] Running Chai-1 trunk...", flush=True)
     with torch.no_grad():

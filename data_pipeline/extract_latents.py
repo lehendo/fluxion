@@ -7,6 +7,22 @@ frozen Chai-1 trunk pipeline and write per-frame token representations to HDF5
 shards.  One instance per GPU; multiple instances share a manifest safely via
 filelock.
 
+2026-08 fix (see docs/code_review_2026-08.md Sec 1, 3, 5.1): the previous
+per-frame coordinate injection (_patch_atom_coords, removed) was inert — none
+of Chai-1's registered feature generators actually read atom_gt_coords on the
+path this extraction used, and the positional truncate/pad it did was wrong
+regardless (ATLAS PDBs include hydrogens; Chai-1's tokenizer is heavy-atom
+only). Every extracted latent for a protein was consequently ~frame-invariant
+— confirmed both by source audit and empirically
+(scripts/verify_latent_frame_sensitivity.py). Coordinate injection now goes
+through data_pipeline/chai1_conditioning.py: a name-based atom
+correspondence (built once per protein) feeds real per-frame coordinates into
+a genuine self-template (this frame IS its own template, identity-aligned),
+which is the one live, registered, coordinate-dependent feature path into the
+frozen trunk. A frame-variance assertion gate (see the pre-flight block in
+extract()) now hard-fails immediately if this regresses, rather than silently
+burning GPU-hours re-extracting a degenerate dataset.
+
 Usage
 ─────
 python data_pipeline/extract_latents.py \
@@ -19,7 +35,6 @@ python data_pipeline/extract_latents.py \
 """
 
 import argparse
-import dataclasses
 import json
 import logging
 import os
@@ -35,6 +50,12 @@ import numpy as np
 import torch
 from filelock import FileLock
 from tqdm import tqdm
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from data_pipeline.chai1_conditioning import (  # noqa: E402
+    build_atom_correspondence,
+    inject_frame_conditioning,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -126,32 +147,9 @@ def _build_feature_context(fasta_path: Path, esm_cache_dir: Path, msa_dir: Optio
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Per-frame coordinate injection
+# Per-frame coordinate injection: see data_pipeline/chai1_conditioning.py
+# (build_atom_correspondence + inject_frame_conditioning), imported above.
 # ─────────────────────────────────────────────────────────────────────────────
-_COORD_FIELD_CANDIDATES = ("atom_gt_coords", "all_atom_positions", "positions", "coords")
-
-def _patch_atom_coords(
-    context: "AllAtomFeatureContext",
-    positions: np.ndarray,   # [N_atoms, 3] float32, Å
-) -> "AllAtomFeatureContext":
-    struct_ctx = context.structure_context
-    
-    # Topology Alignment Patch
-    expected_atoms = struct_ctx.atom_exists_mask.shape[0]
-    if positions.shape[0] > expected_atoms:
-        positions = positions[:expected_atoms]
-    elif positions.shape[0] < expected_atoms:
-        pad = np.zeros((expected_atoms - positions.shape[0], 3), dtype=positions.dtype)
-        positions = np.vstack([positions, pad])
-
-    pos_tensor = torch.from_numpy(positions).float()
-
-    for field_name in _COORD_FIELD_CANDIDATES:
-        if hasattr(struct_ctx, field_name):
-            new_struct_ctx = dataclasses.replace(struct_ctx, **{field_name: pos_tensor})
-            return dataclasses.replace(context, structure_context=new_struct_ctx)
-
-    raise AttributeError(f"Cannot find atom coordinate field on {type(struct_ctx).__name__}.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core 0.6.1 trunk pipeline
@@ -455,24 +453,66 @@ def extract(args: argparse.Namespace) -> None:
     finally:
         fasta_tmp.unlink(missing_ok=True)
 
+    log.info("Building name-based atom correspondence (once per protein) …")
+    chai_to_mda = build_atom_correspondence(
+        all_atoms.resindices, all_atoms.names, base_context.structure_context
+    )
+    log.info("  %d Chai-1 heavy atoms matched to %d real (incl. H) atoms  ✓",
+              chai_to_mda.shape[0], len(all_atoms))
+
     log.info("Pre-flight: validating trunk pipeline on frame 0 …")
     u.trajectory[0]
-    test_ctx = _patch_atom_coords(base_context, all_atoms.positions.copy())
+    test_ctx = inject_frame_conditioning(base_context, all_atoms.positions.copy(), chai_to_mda)
     s0, p0 = run_trunk_pipeline(test_ctx, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
     d_s, d_p = s0.shape[-1], p0.shape[-1]
     log.info("  single: %s   pair: %s   ✓", tuple(s0.shape), tuple(p0.shape))
-    del s0, p0, test_ctx
+    del test_ctx
+
+    # Frame-variance gate (docs/code_review_2026-08.md Sec 8, item 2): decode
+    # one more, distinctly-later frame and assert the trunk's own output
+    # actually differs. This is the permanent regression check for the
+    # exact bug this fix addresses — if coordinate injection silently goes
+    # inert again (e.g. a future chai-lab upgrade changes which feature
+    # generators are registered), this fails loudly in minutes instead of
+    # silently producing a degenerate dataset after hours of GPU time.
+    variance_check_frame = min(500, n_total - 1)
+    if variance_check_frame > 0:
+        u.trajectory[variance_check_frame]
+        check_ctx = inject_frame_conditioning(base_context, all_atoms.positions.copy(), chai_to_mda)
+        s_check, _ = run_trunk_pipeline(check_ctx, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
+        del check_ctx
+        mean_abs_diff = (s0 - s_check).abs().mean().item()
+        log.info("  frame-variance check: frame 0 vs frame %d, single mean|diff|=%.4f",
+                  variance_check_frame, mean_abs_diff)
+        if mean_abs_diff < 1e-2:
+            del s0, s_check
+            raise RuntimeError(
+                f"Frame-variance gate failed: frame 0 and frame {variance_check_frame} "
+                f"produced near-identical trunk output (mean|diff|={mean_abs_diff:.6f}). "
+                f"Coordinate injection is very likely inert again — refusing to extract "
+                f"a degenerate dataset. See docs/code_review_2026-08.md Sec 1."
+            )
+        del s_check
+    del s0
 
     singles_buf, pairs_buf, frame_idx_buf = [], [], []
     protein_dir = out_dir / protein
     t0          = time.perf_counter()
     frames_done = 0
 
-    pbar = tqdm(u.trajectory[start_frame:], total=n_total - start_frame, unit="frame", dynamic_ncols=True, desc=protein, smoothing=0.1)
+    frame_slice = u.trajectory[start_frame:]
+    frame_total = n_total - start_frame
+    if args.max_frames > 0:
+        frame_slice = frame_slice[: args.max_frames]
+        frame_total = min(frame_total, args.max_frames)
+        log.info("--max-frames=%d set: this is a diagnostic short run, not a full extraction.",
+                  args.max_frames)
+
+    pbar = tqdm(frame_slice, total=frame_total, unit="frame", dynamic_ncols=True, desc=protein, smoothing=0.1)
 
     for ts in pbar:
         positions = all_atoms.positions.copy()
-        frame_context = _patch_atom_coords(base_context, positions)
+        frame_context = inject_frame_conditioning(base_context, positions, chai_to_mda)
         single, pair = run_trunk_pipeline(frame_context, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
 
         singles_buf.append(single.half())
@@ -510,6 +550,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num-trunk-recycles", type=int, default=3)
     p.add_argument("--low-memory", action="store_true")
     p.add_argument("--skip-pair", action="store_true")
+    p.add_argument("--max-frames", type=int, default=0,
+                   help="Process at most this many frames from --traj (0 = "
+                        "no limit, extract the full trajectory). For cheap "
+                        "validation runs before committing to a full "
+                        "extraction — see docs/code_review_2026-08.md Sec 8.")
     
     args = p.parse_args()
     
