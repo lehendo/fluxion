@@ -20,9 +20,12 @@
 # OR across every large-VRAM type instead of pinning to one, while
 # --gres=gpu:1 stays untyped (SLURM matches gres count against whichever
 # constrained node it lands on). Include list is every type confirmed
-# >=48 GiB (RTXA6000, A40, A100, H100, L40S, RTX6000B) plus QuadroRTX6000
-# (24 GiB -- comfortably above the ~19.5 GiB this protein needs, unlike
-# TeslaT4/A30 at 16/24 GiB which are excluded or too tight to trust).
+# >=48 GiB with a clean standalone feature tag (RTXA6000, A40, A100,
+# H100, rtx6000b -- lowercase, that's how the node tags it) plus
+# QuadroRTX6000 (24 GiB -- comfortably above the ~19.5 GiB this protein
+# needs). L40S excluded: its nodes only carry a combined feature string
+# (e.g. "AE7763_100g_1T_L40S"), no clean standalone "L40S" tag to match
+# on. TeslaT4/A30 (16/24 GiB) excluded as too small or too tight to trust.
 # Not merged into the main swarm_extract.slurm since only this protein's
 # 3 tasks need it.
 #SBATCH --job-name=flux_swarm_fixed_bigvram
@@ -34,7 +37,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=RTXA6000|A40|A100|H100|L40S|RTX6000B|QuadroRTX6000
+#SBATCH --constraint=RTXA6000|A40|A100|H100|QuadroRTX6000|rtx6000b
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 
