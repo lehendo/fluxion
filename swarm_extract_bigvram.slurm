@@ -10,12 +10,19 @@
 # never passed into the trunk call). The one successful low-memory run was
 # luck of landing on a bigger card, not the fix working.
 #
-# Real fix: request a GPU type known to have enough VRAM (H100, 80 GiB) so
-# the draw never lands on a card too small for this protein's crop size.
-# secondary has substantial H100 capacity (6+ nodes x 8 GPUs, mostly
-# "mixed" i.e. partially free as of 2026-08-15), so this should schedule
-# quickly despite being a typed request -- unlike the earlier H100/H200
-# experience, which was on IllinoisComputes-GPU, a much scarcer pool.
+# Real fix: request a GPU type known to have enough VRAM so the draw never
+# lands on a card too small for this protein's crop size. Pinning to H100
+# alone (the original version of this script) worked but scheduled slowly
+# at times (one wait stretched to ~5h) since it's only one type out of the
+# pool. 2026-08-16: confirmed via `scontrol show node` that every node
+# tags its own GPU model as a plain SLURM feature (e.g. AvailableFeatures
+# includes "A100", "RTXA6000", "H100", "A40", ...), so --constraint can
+# OR across every large-VRAM type instead of pinning to one, while
+# --gres=gpu:1 stays untyped (SLURM matches gres count against whichever
+# constrained node it lands on). Include list is every type confirmed
+# >=48 GiB (RTXA6000, A40, A100, H100, L40S, RTX6000B) plus QuadroRTX6000
+# (24 GiB -- comfortably above the ~19.5 GiB this protein needs, unlike
+# TeslaT4/A30 at 16/24 GiB which are excluded or too tight to trust).
 # Not merged into the main swarm_extract.slurm since only this protein's
 # 3 tasks need it.
 #SBATCH --job-name=flux_swarm_fixed_bigvram
@@ -26,7 +33,8 @@
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:H100:1
+#SBATCH --gres=gpu:1
+#SBATCH --constraint=RTXA6000|A40|A100|H100|L40S|RTX6000B|QuadroRTX6000
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 
@@ -58,7 +66,7 @@ REPLICA=$(echo "$PAIR"   | awk '{print $2}')
 PDB="$ATLAS_RAW/$PROTEIN_ID/${PROTEIN_ID}.pdb"
 XTC="$ATLAS_RAW/$PROTEIN_ID/${PROTEIN_ID}_prod_R${REPLICA}_fit.xtc"
 
-echo "Worker $SLURM_ARRAY_TASK_ID: $PROTEIN_ID replica $REPLICA (H100, big-VRAM mode)"
+echo "Worker $SLURM_ARRAY_TASK_ID: $PROTEIN_ID replica $REPLICA (big-VRAM mode)"
 echo "  PDB: $PDB"
 echo "  XTC: $XTC"
 
