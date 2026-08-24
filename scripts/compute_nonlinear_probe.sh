@@ -20,7 +20,12 @@ source ~/.bashrc
 conda activate fluxion
 cd /u/arjunc4/fluxion
 
-TRAIN_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bq8_A,1bx7_A"
+# 2026-08-24: added the 5 proteins that were excluded from the old
+# 14-protein wall-clock-limited pilot subset (1b25_D, 16pk_A, 1af7_A,
+# 1bkp_A, 1aol_A -- all now have corrected latents) into TRAIN. VAL kept
+# identical to the original run for direct comparability of the
+# held-out-protein generalization result.
+TRAIN_PROTEINS="16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bkp_A,1bq8_A,1bx7_A"
 VAL_PROTEINS="1bxy_A,1bxy_B,1btk_A"
 
 python scripts/compute_nonlinear_probe.py \
