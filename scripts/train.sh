@@ -4,7 +4,7 @@
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:h100.1g.20gb:4
+#SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_1g.20gb:4
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 #SBATCH --time=04:00:00
