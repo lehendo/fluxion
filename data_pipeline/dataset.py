@@ -321,14 +321,21 @@ def build_multi_protein_dataset(
     norm_stats_path: Union[str, Path, None] = None,
     lag: int = 1,
     velocity_lag: int = 0,
+    load_pair: bool = True,
 ) -> ConcatDataset:
     """
-    Discover all proteins in `latents_dir` that have both manifest.json and
-    pair.pt, build a LatentDataset for each, and return a ConcatDataset.
+    Discover all proteins in `latents_dir` that have manifest.json (and, if
+    load_pair, pair.pt too), build a LatentDataset for each, and return a
+    ConcatDataset.
 
     protein_ids: optional allowlist — if provided, only include those proteins.
-    Proteins missing either file are skipped with a warning so a partially
-    finished extraction run doesn't block training.
+    Proteins missing either required file are skipped with a warning so a
+    partially finished extraction run doesn't block training.
+
+    load_pair: defaults to True (existing behavior — training and checkpoint
+    evaluation need the real pair conditioning). Pass False for callers that
+    only need single-token latents (e.g. compute_trivial_baseline.py), so
+    they work against extraction runs written with --skip-pair.
 
     norm_stats_path: optional explicit path to a norm_stats.pt file (as
     produced by data_pipeline/compute_norm_stats.py) with per-channel "mean"
@@ -364,16 +371,17 @@ def build_multi_protein_dataset(
             continue
         manifest = protein_dir / "manifest.json"
         pair     = protein_dir / "pair.pt"
-        if not manifest.exists() or not pair.exists():
+        if not manifest.exists() or (load_pair and not pair.exists()):
             skipped.append(protein_dir.name)
             continue
         datasets.append(LatentDataset(
-            latents_dir, protein_dir.name, load_pair=True, norm_stats=norm_stats,
+            latents_dir, protein_dir.name, load_pair=load_pair, norm_stats=norm_stats,
             lag=lag, velocity_lag=velocity_lag,
         ))
 
     if skipped:
-        print(f"[dataset] Skipped {len(skipped)} proteins (missing manifest or pair.pt): "
+        reason = "missing manifest or pair.pt" if load_pair else "missing manifest"
+        print(f"[dataset] Skipped {len(skipped)} proteins ({reason}): "
               f"{skipped}", flush=True)
     if not datasets:
         raise RuntimeError(f"No valid protein datasets found in {latents_dir}")
@@ -467,6 +475,42 @@ def collate_fn(
     return (
         (torch.stack(z0_list), torch.stack(z1_list)),
         torch.stack(pair_list),
+        torch.tensor(fidx_list, dtype=torch.int64),
+        torch.stack(mask_list),
+    )
+
+
+def collate_fn_no_pair(
+    batch: list[tuple[tuple[torch.Tensor, torch.Tensor], None, int]],
+) -> tuple[tuple[torch.Tensor, torch.Tensor], None, torch.Tensor, torch.Tensor]:
+    """
+    Same padding behavior as collate_fn, for a multi-protein (mixed-length)
+    batch, but for datasets built with load_pair=False — pair is None per
+    sample, so it's never padded/stacked (saves the per-batch GB-scale pair
+    tensor entirely for callers, like compute_trivial_baseline.py, that
+    never touch it and may be run against extractions with no pair.pt at
+    all, e.g. written with --skip-pair).
+
+    Returns the same 4-tuple shape as collate_fn, with pair always None.
+    """
+    L_max = max(item[0][0].shape[0] for item in batch)
+
+    z0_list, z1_list, mask_list, fidx_list = [], [], [], []
+    for (z0, z1), _pair, frame_idx in batch:
+        L = z0.shape[0]
+        pad = L_max - L
+
+        z0_list.append(F.pad(z0, (0, 0, 0, pad)))
+        z1_list.append(F.pad(z1, (0, 0, 0, pad)))
+
+        mask = torch.zeros(L_max, dtype=torch.bool)
+        mask[L:] = True
+        mask_list.append(mask)
+        fidx_list.append(frame_idx)
+
+    return (
+        (torch.stack(z0_list), torch.stack(z1_list)),
+        None,
         torch.tensor(fidx_list, dtype=torch.int64),
         torch.stack(mask_list),
     )

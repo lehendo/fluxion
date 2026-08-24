@@ -26,6 +26,7 @@ from data_pipeline.dataset import (
     build_multi_protein_dataset,
     build_multi_protein_static_dataset,
     collate_fn,
+    collate_fn_no_pair,
     collate_fn_static,
 )
 
@@ -604,6 +605,35 @@ class TestBuildMultiProteinDataset:
         underlying = ds.datasets[0]
         assert underlying.norm_mean is None
 
+    def test_load_pair_false_includes_proteins_missing_pair(self, tmp_path):
+        """
+        load_pair=False must include proteins with manifest.json but no
+        pair.pt (e.g. an extraction run written with --skip-pair) — unlike
+        the load_pair=True default, which skips them.
+        """
+        protA_dir = tmp_path / "protA"
+        shard_dir = protA_dir / "protA"
+        shard_dir.mkdir(parents=True)
+        _write_shard(shard_dir, "shard_000000.h5", N_FRAMES_A, L_A)
+        _write_manifest(protA_dir, "protA", [{
+            "path": "protA/shard_000000.h5", "n_frames": N_FRAMES_A,
+            "first_idx": 0, "last_idx": N_FRAMES_A - 1,
+        }])
+        assert not (protA_dir / "pair.pt").exists()
+
+        ds = build_multi_protein_dataset(tmp_path, load_pair=False)
+        assert len(ds) == N_FRAMES_A
+        (z0, z1), pair, frame_idx = ds[0]
+        assert z0.shape == (L_A, D_S)
+        assert pair is None
+
+    def test_load_pair_false_still_skips_missing_manifest(self, tmp_path):
+        """load_pair=False relaxes the pair.pt requirement, not manifest.json."""
+        protA_dir = tmp_path / "protA"
+        protA_dir.mkdir()
+        with pytest.raises(RuntimeError, match="No valid protein"):
+            build_multi_protein_dataset(tmp_path, load_pair=False)
+
 
 # ---------------------------------------------------------------------------
 # collate_fn tests
@@ -668,6 +698,84 @@ class TestCollateFn:
         assert pair.dtype == torch.float32
         assert fidx.dtype == torch.int64
         assert mask.dtype == torch.bool
+
+
+class TestCollateFnNoPair:
+    def _make_sample(self, L: int):
+        z0 = torch.randn(L, D_S)
+        z1 = torch.randn(L, D_S)
+        return (z0, z1), None, 42
+
+    def test_output_shapes_uniform_length(self):
+        batch = [self._make_sample(L_A) for _ in range(3)]
+        (z0, z1), pair, fidx, mask = collate_fn_no_pair(batch)
+        assert z0.shape == (3, L_A, D_S)
+        assert z1.shape == (3, L_A, D_S)
+        assert pair is None
+        assert fidx.shape == (3,)
+        assert mask.shape == (3, L_A)
+        assert not mask.any()
+
+    def test_output_shapes_mixed_length(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        L_max = max(L_A, L_B)
+        (z0, z1), pair, fidx, mask = collate_fn_no_pair(batch)
+        assert z0.shape == (2, L_max, D_S)
+        assert pair is None
+        assert mask.shape == (2, L_max)
+
+    def test_padding_mask_correct(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        _, _, _, mask = collate_fn_no_pair(batch)
+        shorter_idx = 0 if L_A < L_B else 1
+        longer_idx = 1 - shorter_idx
+        L_short = min(L_A, L_B)
+        assert not mask[shorter_idx, :L_short].any()
+        assert mask[shorter_idx, L_short:].all()
+        assert not mask[longer_idx].any()
+
+    def test_pad_region_is_zero(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        (z0, _), _, _, mask = collate_fn_no_pair(batch)
+        shorter_idx = 0 if L_A < L_B else 1
+        L_short = min(L_A, L_B)
+        assert z0[shorter_idx, L_short:].eq(0).all()
+
+    def test_frame_idx_preserved(self):
+        batch = [self._make_sample(L_A), self._make_sample(L_A)]
+        _, _, fidx, _ = collate_fn_no_pair(batch)
+        assert fidx.tolist() == [42, 42]
+
+    def test_dtypes(self):
+        batch = [self._make_sample(L_A)]
+        (z0, z1), pair, fidx, mask = collate_fn_no_pair(batch)
+        assert z0.dtype == torch.float32
+        assert fidx.dtype == torch.int64
+        assert mask.dtype == torch.bool
+
+
+class TestBuildMultiProteinDatasetNoPairIntegration:
+    def test_mixed_proteins_batch_no_pair(self, tmp_path):
+        """load_pair=False end-to-end: multi-protein dataset -> collate_fn_no_pair,
+        covering exactly the path compute_trivial_baseline.py exercises against
+        a --skip-pair extraction (no pair.pt anywhere under latents_dir)."""
+        make_protein_dir(tmp_path, "protA", N_FRAMES_A, L_A)
+        make_protein_dir(tmp_path, "protB", N_FRAMES_B, L_B)
+        for p in ("protA", "protB"):
+            (tmp_path / p / "pair.pt").unlink()
+
+        ds = build_multi_protein_dataset(tmp_path, load_pair=False)
+        assert len(ds) == N_FRAMES_A + N_FRAMES_B
+
+        sample_a = ds[0]
+        sample_b = ds[N_FRAMES_A]
+        (z0, z1), pair, fidx, mask = collate_fn_no_pair([sample_a, sample_b])
+
+        L_max = max(L_A, L_B)
+        assert z0.shape == (2, L_max, D_S)
+        assert pair is None
+        assert mask[0, L_A:].all()
+        assert not mask[1].any()
 
 
 # ---------------------------------------------------------------------------

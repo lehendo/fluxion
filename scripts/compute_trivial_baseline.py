@@ -37,7 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from data_pipeline.dataset import build_multi_protein_dataset, collate_fn
+from data_pipeline.dataset import build_multi_protein_dataset, collate_fn_no_pair
 
 
 def compute_trivial_baseline_mse(
@@ -92,7 +92,8 @@ def main() -> None:
     args = parser.parse_args()
 
     protein_ids = [p.strip() for p in args.proteins.split(",")] if args.proteins else None
-    dataset: Dataset = build_multi_protein_dataset(args.latents_dir, protein_ids=protein_ids)
+    dataset: Dataset = build_multi_protein_dataset(
+        args.latents_dir, protein_ids=protein_ids, load_pair=False)
 
     torch.manual_seed(args.seed)
     dataloader = DataLoader(
@@ -100,7 +101,7 @@ def main() -> None:
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_no_pair,
         drop_last=True,
     )
 
