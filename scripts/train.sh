@@ -53,6 +53,19 @@ PILOT_PROTEINS="16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1
 # but this run only needs to show whether the loss trends down and
 # where it lands vs. today's baselines, not reproduce a specific
 # hyperparameter regime) and bumped --mem to 96G for margin.
+#
+# 10142030 ran the full 4h without ever checkpointing: the SIGUSR1@120
+# preemption signal fires at the srun/torchrun launcher level, not the
+# training/train.py child process torchrun spawns underneath it --
+# Python's default SIGUSR1 behavior (terminate) killed the launcher
+# before train.py's registered handler ever ran, so nothing was saved
+# and the whole run's state was lost. Rather than solve torchrun's
+# signal-forwarding behavior right now, decouple the two concerns:
+# --checkpoint-interval guarantees a periodic save regardless of
+# whether clean-shutdown signal handling ever works. 5000 steps is
+# roughly every ~25-30min at the pace observed in 10142030 (~2900
+# steps/16min), giving several evaluatable checkpoints across the 4h
+# window via scripts/evaluate_checkpoint.py.
 srun torchrun \
     --standalone \
     --nproc_per_node=1 \
@@ -62,4 +75,5 @@ srun torchrun \
     --batch-size 4 \
     --lr 1e-4 \
     --epochs 200 \
-    --log-interval 10
+    --log-interval 10 \
+    --checkpoint-interval 5000
