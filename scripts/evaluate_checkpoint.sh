@@ -15,12 +15,17 @@ source ~/.bashrc
 conda activate fluxion
 cd /u/arjunc4/fluxion
 
-PILOT_PROTEINS="1a62_A,1ab1_A,1ah7_A,1ail_A,1b0n_A,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B"
+# 2026-08-25: held out (never trained on, in any form) -- same split used
+# by today's nonlinear probe (compute_nonlinear_probe.sh) so this checkpoint's
+# real generalization is directly comparable to that probe's 91.25%
+# reduction / MSE=0.001701 result and the linear baseline (MSE=0.001638),
+# not conflated with train-set fit.
+VAL_PROTEINS="1bxy_A,1bxy_B,1btk_A"
 
 python scripts/evaluate_checkpoint.py \
     --checkpoint  /scratch/arjunc4/fluxion_data/checkpoints/checkpoint.pt \
     --latents-dir /scratch/arjunc4/fluxion_data/latents \
-    --proteins    "$PILOT_PROTEINS" \
+    --proteins    "$VAL_PROTEINS" \
     --n-batches   100 \
     --batch-size  4 \
     --num-workers 2 \
