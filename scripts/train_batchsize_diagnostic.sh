@@ -20,15 +20,22 @@
 # this run silently RESUME from 10151511's in-progress state instead of
 # starting fresh at step 0 (defeating the comparison), and risk both
 # jobs writing the same checkpoint file concurrently.
+# 2026-08-25: moved from ic-express (single shared MIG node, fully
+# allocated, ~1.5h+ queue wait observed) to secondary (untyped GPU,
+# plenty of idle/mixed capacity confirmed via sinfo at submit time --
+# several H100/A100/A40/RTXA6000/A30 nodes in "mixed" state). This job's
+# actual GPU need is tiny (40M-param model, batch=8, short run) so any
+# card works; --time set to secondary's 4h max per standing policy
+# (never estimate), even though this only needs ~15-25min.
 #SBATCH --job-name=flux_train_bs8diag
-#SBATCH --partition=ic-express
+#SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:nvidia_h100_80gb_hbm3_1g.20gb:1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=logs/train_bs8diag_%j.out
 #SBATCH --error=logs/train_bs8diag_%j.err
 
