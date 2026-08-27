@@ -443,12 +443,31 @@ def build_multi_protein_static_dataset(
 
 def collate_fn(
     batch: list[tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, int]],
+    pad_to: int | None = None,
 ) -> tuple[tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
     """
-    Pad a mixed-length batch to the longest sequence in it.
+    Pad a mixed-length batch to the longest sequence in it (or to a fixed
+    length — see pad_to below).
 
     Each sample is ((z0 [L_i, d_s], z1 [L_i, d_s]), pair [L_i, L_i, d_p], frame_idx).
     Proteins with different sequence lengths L_i are zero-padded to L_max.
+
+    pad_to: if given, every batch pads to this fixed length instead of the
+    per-batch max. Default (None) preserves the original per-batch-dynamic
+    behavior. Use a fixed pad_to (e.g. the largest Chai-1 crop bucket, 768)
+    for long-running DataLoaders with num_workers>0 and pin_memory=True —
+    PyTorch's pinned-memory allocator caches a separate block per distinct
+    tensor SIZE it sees and never releases them, so a per-batch-varying
+    L_max (this dataset spans 256/384/512/768 depending on which proteins
+    get sampled) causes host RAM to grow unboundedly over training as new
+    sizes keep appearing. Confirmed 2026-08-27: a training run OOM'd via a
+    Linux cgroup oom_kill (host RAM, not CUDA) at the identical step twice
+    in a row regardless of MALLOC_ARENA_MAX (which only affects glibc
+    malloc, not this allocator) -- a fixed pad_to eliminates the variable-
+    size pattern that triggers it, at the cost of always paying the max
+    bucket's memory/compute (worth it for training stability; a run-once
+    eval script under different memory constraints might prefer the
+    original dynamic behavior instead).
 
     Returns:
         (z0, z1)      float32 [B, L_max, d_s]
@@ -456,7 +475,7 @@ def collate_fn(
         frame_idx     int64   [B]
         padding_mask  bool    [B, L_max]  — True = padded position (ignore in loss/attn)
     """
-    L_max = max(item[0][0].shape[0] for item in batch)
+    L_max = pad_to if pad_to is not None else max(item[0][0].shape[0] for item in batch)
 
     z0_list, z1_list, pair_list, mask_list, fidx_list = [], [], [], [], []
     for (z0, z1), pair, frame_idx in batch:

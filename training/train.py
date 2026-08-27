@@ -30,6 +30,7 @@ import random
 import signal
 import argparse
 from copy import deepcopy
+from functools import partial
 from pathlib import Path
 
 # Ensure repo root is on sys.path regardless of invocation directory,
@@ -237,6 +238,15 @@ def main(args: argparse.Namespace) -> None:
     protein_ids = [p.strip() for p in args.proteins.split(",")] if args.proteins else None
     dataset = build_multi_protein_dataset(latents_dir, protein_ids=protein_ids)
     sampler = DistributedSampler(dataset, shuffle=True)
+    # pad_to=768 (the largest Chai-1 crop bucket): pins every batch's pair
+    # tensor to a FIXED shape instead of the per-batch dynamic max. Without
+    # this, host RAM grew unboundedly over training and OOM-killed the job
+    # (confirmed 2026-08-27, reproduced at the identical step twice,
+    # unaffected by MALLOC_ARENA_MAX) -- PyTorch's pinned-memory allocator
+    # (pin_memory=True below) caches a block per distinct tensor size it
+    # sees and never releases them, so a varying L_max (this dataset spans
+    # 256/384/512/768 depending on which proteins get sampled) keeps
+    # growing the cache forever. See collate_fn's docstring for detail.
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -244,7 +254,7 @@ def main(args: argparse.Namespace) -> None:
         num_workers=4,
         pin_memory=True,
         drop_last=True,
-        collate_fn=collate_fn,
+        collate_fn=partial(collate_fn, pad_to=768),
     )
 
     # ------------------------------------------------------------------

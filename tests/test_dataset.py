@@ -699,6 +699,46 @@ class TestCollateFn:
         assert fidx.dtype == torch.int64
         assert mask.dtype == torch.bool
 
+    def test_pad_to_fixed_length_uniform_batch(self):
+        """pad_to pads every batch to a FIXED length, not the per-batch max --
+        even when every sample in the batch already shares the same L."""
+        pad_to = L_A + 20
+        batch = [self._make_sample(L_A) for _ in range(3)]
+        (z0, z1), pair, fidx, mask = collate_fn(batch, pad_to=pad_to)
+        assert z0.shape   == (3, pad_to, D_S)
+        assert pair.shape == (3, pad_to, pad_to, D_P)
+        assert mask.shape == (3, pad_to)
+        assert mask[:, L_A:].all()          # every sample now padded past its real length
+        assert not mask[:, :L_A].any()
+
+    def test_pad_to_fixed_length_mixed_batch(self):
+        """pad_to overrides the per-batch max entirely -- output length is
+        pad_to regardless of what L values are actually present."""
+        pad_to = max(L_A, L_B) + 10
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        (z0, z1), pair, fidx, mask = collate_fn(batch, pad_to=pad_to)
+        assert z0.shape   == (2, pad_to, D_S)
+        assert pair.shape == (2, pad_to, pad_to, D_P)
+        assert mask.shape == (2, pad_to)
+
+    def test_pad_to_none_preserves_dynamic_behavior(self):
+        """Default (pad_to=None) is unchanged: pads to the batch's own max."""
+        batch = [self._make_sample(L_A), self._make_sample(L_B)]
+        (z0, _), _, _, _ = collate_fn(batch, pad_to=None)
+        assert z0.shape[1] == max(L_A, L_B)
+
+    def test_pad_to_same_size_across_different_batches(self):
+        """The whole point: two batches with DIFFERENT actual content sizes
+        produce IDENTICALLY-SHAPED tensors when pad_to is fixed -- this is
+        what avoids the pinned-memory allocator seeing new sizes per batch."""
+        pad_to = 1000
+        batch_small = [self._make_sample(L_A)]
+        batch_large = [self._make_sample(L_B)]
+        (z0_small, _), pair_small, _, _ = collate_fn(batch_small, pad_to=pad_to)
+        (z0_large, _), pair_large, _, _ = collate_fn(batch_large, pad_to=pad_to)
+        assert z0_small.shape == z0_large.shape == (1, pad_to, D_S)
+        assert pair_small.shape == pair_large.shape == (1, pad_to, pad_to, D_P)
+
 
 class TestCollateFnNoPair:
     def _make_sample(self, L: int):
