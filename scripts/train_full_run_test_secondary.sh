@@ -42,24 +42,29 @@ cd /u/arjunc4/fluxion
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
 
-# 2026-08-28 fix: `pkill -SIGUSR1 -f "training/train.py"` was too broad --
-# it also matches the torchrun LAUNCHER process itself (its own cmdline
-# includes "training/train.py" as the script it's launching), which has no
-# signal handler and dies instantly on SIGUSR1, triggering torchrun's own
-# child-teardown before the rank processes can finish their graceful
-# checkpoint+exit (confirmed via job 10206925: both ranks logged "preparing
-# to checkpoint", but no checkpoint was saved and the job ended FAILED/138
-# before "Graceful exit" ever printed). Fix: only signal PIDs whose cmdline
-# does NOT also contain "torchrun" -- this reaches the two rank processes
-# and their forked DataLoader workers (which inherit the real handler via
-# fork) while leaving the launcher alone.
+# 2026-08-28 fix, take 2: excluding the torchrun launcher by cmdline match
+# (job 10206925 -> 10213358) still wasn't surgical enough. sacct showed the
+# actual torchrun step failed (exit 1), and the log showed 3x "[Rank 1]"
+# preemption prints for what should be a single delivery -- pkill -f
+# "training/train.py" also matches each rank's num_workers=4 DataLoader
+# worker subprocesses (forked from the rank process AFTER the handler was
+# installed, so they inherit it and print too), and signaling a worker
+# while it's blocked in a low-level IPC read to its parent can corrupt that
+# pipe, crashing the rank before it finishes checkpointing. Real fix: only
+# signal torchrun's DIRECT children (the exact rank processes) by PID via
+# `pkill -P`, never touching the DataLoader worker grandchildren or the
+# launcher itself.
 forward_signal() {
-    echo "[wrapper] Caught SIGUSR1 at $(date), forwarding to training/train.py rank process(es), excluding the torchrun launcher..." | tee -a logs/train_full_test_sec_${SLURM_JOB_ID}.out
-    for pid in $(pgrep -f "training/train.py"); do
-        if ! grep -q "torchrun" "/proc/$pid/cmdline" 2>/dev/null; then
-            kill -SIGUSR1 "$pid" 2>/dev/null
-        fi
-    done
+    echo "[wrapper] Caught SIGUSR1 at $(date), locating torchrun launcher to signal its direct rank children only..."
+    TORCHRUN_PID=$(pgrep -f "torchrun.*--standalone" | head -1)
+    if [ -n "$TORCHRUN_PID" ]; then
+        echo "[wrapper] torchrun launcher PID=$TORCHRUN_PID, signaling its direct children:"
+        pgrep -P "$TORCHRUN_PID"
+        pkill -SIGUSR1 -P "$TORCHRUN_PID"
+    else
+        echo "[wrapper] WARNING: could not find torchrun launcher PID, falling back to broad pkill"
+        pkill -SIGUSR1 -f "training/train.py"
+    fi
 }
 trap forward_signal SIGUSR1
 
