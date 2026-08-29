@@ -38,9 +38,24 @@ cd /u/arjunc4/fluxion
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
 
+# 2026-08-28 fix: `pkill -SIGUSR1 -f "training/train.py"` was too broad --
+# it also matches the torchrun LAUNCHER process itself (its own cmdline
+# includes "training/train.py" as the script it's launching), which has no
+# signal handler and dies instantly on SIGUSR1, triggering torchrun's own
+# child-teardown before the rank processes can finish their graceful
+# checkpoint+exit (confirmed via job 10206925: both ranks logged "preparing
+# to checkpoint", but no checkpoint was saved and the job ended FAILED/138
+# before "Graceful exit" ever printed). Fix: only signal PIDs whose cmdline
+# does NOT also contain "torchrun" -- this reaches the two rank processes
+# and their forked DataLoader workers (which inherit the real handler via
+# fork) while leaving the launcher alone.
 forward_signal() {
-    echo "[wrapper] Caught SIGUSR1 at $(date), forwarding to training/train.py worker(s)..." | tee -a logs/train_full_test_${SLURM_JOB_ID}.out
-    pkill -SIGUSR1 -f "training/train.py"
+    echo "[wrapper] Caught SIGUSR1 at $(date), forwarding to training/train.py rank process(es), excluding the torchrun launcher..." | tee -a logs/train_full_test_${SLURM_JOB_ID}.out
+    for pid in $(pgrep -f "training/train.py"); do
+        if ! grep -q "torchrun" "/proc/$pid/cmdline" 2>/dev/null; then
+            kill -SIGUSR1 "$pid" 2>/dev/null
+        fi
+    done
 }
 trap forward_signal SIGUSR1
 
