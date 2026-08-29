@@ -19,15 +19,19 @@
 # multi-hour IllinoisComputes-GPU-style wait -- prior 2-way tests already
 # confirmed non-MIG GPUs avoid the "Duplicate GPU detected" bug (which was
 # about MIG slice aliasing, not GPU count), so 3-way is just added margin,
-# not the last open question.
+# not the last open question. --mem=128G (naively scaled from the 2-way
+# test's working 96G) OOM'd within 2 minutes at 3 ranks (job 10220794, 5
+# oom_kill events, rank 2 SIGKILLed) -- each rank runs its own 4 DataLoader
+# workers plus pinned buffers, so memory scales with rank count faster than
+# a simple per-GPU ratio suggests. Bumped to 192G.
 #SBATCH --job-name=flux_train_full_test_sec
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:H100:3
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=128G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=192G
 #SBATCH --time=00:30:00
 #SBATCH --signal=B:SIGUSR1@1200
 #SBATCH --output=logs/train_full_test_sec_%j.out
