@@ -24,8 +24,8 @@
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --nodelist=ccc0478
-#SBATCH --gres=gpu:A30:2
+#SBATCH --nodelist=ccc0423
+#SBATCH --gres=gpu:H100:2
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96G
 #SBATCH --time=00:30:00
