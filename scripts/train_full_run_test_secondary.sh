@@ -29,6 +29,15 @@
 # no new information, just a longer queue wait for a question (SIGUSR1
 # graceful-exit, where rank 0 currently goes silent) that's orthogonal to
 # GPU count anyway.
+#
+# 2026-08-29, third thought: landed on ccc0423 again (job 10222972) --
+# ran cleanly for ~5 min and 250+ steps, then a real oom_kill hit rank 1.
+# ccc0423/ccc0424 have now shown memory contention twice from apparently
+# OTHER tenants' jobs sharing the node (fluctuating over time, not our own
+# config -- job 10214022 ran fine on this same node with the same 96G
+# request earlier). Excluding both explicitly so Slurm places us on a
+# less-contended secondary H100 node instead of rolling the dice again.
+#SBATCH --exclude=ccc0423,ccc0424
 #SBATCH --job-name=flux_train_full_test_sec
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
