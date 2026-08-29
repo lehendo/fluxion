@@ -181,6 +181,19 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     signal.signal(signal.SIGUSR1, handle_sigusr1)
 
+    # Self-report this rank's PID so the SLURM wrapper script's SIGUSR1
+    # forwarding can target it directly. torchrun's internal process tree
+    # (launcher -> possible supervisor -> rank workers) isn't a stable,
+    # externally-guessable shape across torchrun/PyTorch versions --
+    # confirmed the hard way: `pkill -SIGUSR1 -P <torchrun_pid>` (targeting
+    # torchrun's direct children) hit a single intermediate process that
+    # was neither rank, killing the job before either rank's handler ever
+    # ran. Self-reporting sidesteps process-tree discovery entirely.
+    job_id = os.environ.get("SLURM_JOB_ID", "nojobid")
+    pid_dir = Path(args.scratch_dir) / ".rank_pids" / job_id
+    pid_dir.mkdir(parents=True, exist_ok=True)
+    (pid_dir / f"rank_{global_rank}.pid").write_text(str(os.getpid()))
+
     # ------------------------------------------------------------------
     # 3. Model + EMA + optimizer + warmup scheduler
     # ------------------------------------------------------------------

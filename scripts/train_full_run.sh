@@ -44,27 +44,31 @@ cd /u/arjunc4/fluxion
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
 
-# 2026-08-28 fix, take 2: excluding the torchrun launcher by cmdline match
-# (job 10206925 -> 10213358) still wasn't surgical enough. sacct showed the
-# actual torchrun step failed (exit 1), and the log showed 3x "[Rank 1]"
-# preemption prints for what should be a single delivery -- pkill -f
-# "training/train.py" also matches each rank's num_workers=4 DataLoader
-# worker subprocesses (forked from the rank process AFTER the handler was
-# installed, so they inherit it and print too), and signaling a worker
-# while it's blocked in a low-level IPC read to its parent can corrupt that
-# pipe, crashing the rank before it finishes checkpointing. Real fix: only
-# signal torchrun's DIRECT children (the exact rank processes) by PID via
-# `pkill -P`, never touching the DataLoader worker grandchildren or the
-# launcher itself.
+# 2026-08-28 fix, take 3: two prior attempts at guessing torchrun's process
+# tree from outside both failed -- broad `pkill -f "training/train.py"`
+# (job 10206925/10213358) also hit each rank's num_workers=4 DataLoader
+# worker subprocesses (which inherit the handler via fork and can crash
+# when signaled mid-IPC-read); narrowing to torchrun's direct children via
+# `pkill -P <torchrun_pid>` (job 10213525) hit a single intermediate
+# supervisor process that was neither actual rank, killing the job before
+# either rank's handler ran (confirmed: zero "[Rank X] preparing" prints
+# that run). torchrun's internal tree shape isn't stable enough to guess
+# externally. Real fix: training/train.py now self-reports each rank's own
+# PID to $SCRATCH_DIR/.rank_pids/$SLURM_JOB_ID/rank_<N>.pid at startup --
+# the wrapper just reads those files, no process-tree guessing at all.
+SCRATCH_DIR=/scratch/arjunc4/fluxion_data
 forward_signal() {
-    echo "[wrapper] Caught SIGUSR1 at $(date), locating torchrun launcher to signal its direct rank children only..."
-    TORCHRUN_PID=$(pgrep -f "torchrun.*--standalone" | head -1)
-    if [ -n "$TORCHRUN_PID" ]; then
-        echo "[wrapper] torchrun launcher PID=$TORCHRUN_PID, signaling its direct children:"
-        pgrep -P "$TORCHRUN_PID"
-        pkill -SIGUSR1 -P "$TORCHRUN_PID"
+    echo "[wrapper] Caught SIGUSR1 at $(date), signaling rank processes via self-reported PID files..."
+    PID_DIR="$SCRATCH_DIR/.rank_pids/$SLURM_JOB_ID"
+    if [ -d "$PID_DIR" ]; then
+        for f in "$PID_DIR"/rank_*.pid; do
+            [ -f "$f" ] || continue
+            pid=$(cat "$f")
+            echo "[wrapper] signaling rank pid=$pid (from $f)"
+            kill -SIGUSR1 "$pid" 2>/dev/null
+        done
     else
-        echo "[wrapper] WARNING: could not find torchrun launcher PID, falling back to broad pkill"
+        echo "[wrapper] WARNING: $PID_DIR not found yet (too early?), falling back to broad pkill"
         pkill -SIGUSR1 -f "training/train.py"
     fi
 }
