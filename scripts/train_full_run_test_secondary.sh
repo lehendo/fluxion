@@ -4,30 +4,30 @@
 # instead of IllinoisComputes-GPU.
 #
 # 2026-08-27: IllinoisComputes-GPU had zero nodes with >=4 free full GPUs
-# (job 10194965 sat PENDING/Priority for 12+h -- checked via `scontrol show
-# node`: every node was either fully allocated or short by exactly the GPUs
-# we needed). secondary has a hard 4h cap, but this test only needs minutes,
-# so that's not a real constraint. Checked node-by-node for a node with free
-# GPUs AND free mem (the obvious H100:8 nodes, ccc0423/ccc0424, looked idle
-# in sinfo's gres column but turned out to be memory-starved by a co-located
-# CPU-only job -- ~1TB mem allocated, only ~8GB free). Node target has moved
-# around as free nodes get claimed by other jobs between checks (first
-# ccc0333/A40:2 free -- ran as job 10206925, then got claimed before the
-# rerun; now ccc0478/A30:2, fully idle, 96 free CPUs, 257G free mem) --
-# always re-check `scontrol show node <n>` for actual free GPU/mem
-# immediately before submitting. --nproc_per_node=2 (not 4): 2 real,
-# distinct, non-MIG GPUs is sufficient to answer the actual question (does
-# DDP avoid the "Duplicate GPU detected" collision outside of MIG slices)
-# -- the bug was about MIG slice aliasing, not GPU count.
+# (job 10194965 sat PENDING/Priority for 12+h). secondary has a hard 4h
+# cap, but this test only needs minutes, so that's not a real constraint.
+#
+# 2026-08-29: had been manually picking a specific free node via `scontrol
+# show node` + --nodelist, but secondary's free-GPU nodes are churning too
+# fast to hand-pick this way (checked ccc0420 at 3 free H100s, resubmit
+# ~30s later and it was down to 2 -- another job grabbed one mid-check).
+# Stopped racing other users' jobs via SSH polling: dropped --nodelist and
+# just request --gres=gpu:H100:3 on the whole partition, letting Slurm's
+# own scheduler atomically place it on whichever of secondary's several
+# H100 nodes currently qualifies. --nproc_per_node=3 (not the real run's
+# 4): closest to 4 that's realistically gettable without risking another
+# multi-hour IllinoisComputes-GPU-style wait -- prior 2-way tests already
+# confirmed non-MIG GPUs avoid the "Duplicate GPU detected" bug (which was
+# about MIG slice aliasing, not GPU count), so 3-way is just added margin,
+# not the last open question.
 #SBATCH --job-name=flux_train_full_test_sec
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --nodelist=ccc0423
-#SBATCH --gres=gpu:H100:2
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=96G
+#SBATCH --gres=gpu:H100:3
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=128G
 #SBATCH --time=00:30:00
 #SBATCH --signal=B:SIGUSR1@1200
 #SBATCH --output=logs/train_full_test_sec_%j.out
@@ -76,7 +76,7 @@ PILOT_PROTEINS="16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1
 
 srun torchrun \
     --standalone \
-    --nproc_per_node=2 \
+    --nproc_per_node=3 \
     training/train.py \
     --scratch-dir /scratch/arjunc4/fluxion_data_diag \
     --proteins     "$PILOT_PROTEINS" \
