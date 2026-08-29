@@ -49,17 +49,27 @@ from training.checkpoint import save_checkpoint, load_checkpoint
 from data_pipeline.dataset import build_multi_protein_dataset, collate_fn
 
 # ---------------------------------------------------------------------------
-# Global preemption flag — set by SIGUSR1 handler, checked each batch
+# Global preemption flag — set by SIGUSR1 handler, checked each batch. Also
+# cache this rank's ID at startup (see main(), section 1) rather than
+# calling dist.get_rank() from inside the handler: a signal handler runs
+# asynchronously and can interrupt the main thread mid-call into NCCL/
+# torch.distributed internals, which are not reentrant/async-signal-safe --
+# if the interrupted code held an internal lock that dist.get_rank() also
+# needs, the handler deadlocks silently (no traceback, no print, just a
+# process that stops responding). Confirmed as the likely cause of job
+# 10214022: rank 1's handler printed fine, rank 0's never printed at all,
+# and the job died with zero evidence of a crash -- consistent with one
+# rank happening to get unlucky on lock timing and the other not.
 # ---------------------------------------------------------------------------
 PREEMPTION_REQUESTED = False
+_RANK_FOR_SIGNAL_HANDLER = 0
 
 
 def handle_sigusr1(signum, frame) -> None:
     global PREEMPTION_REQUESTED
     PREEMPTION_REQUESTED = True
-    rank = dist.get_rank() if dist.is_initialized() else 0
     print(
-        f"[Rank {rank}] SLURM preemption signal received. "
+        f"[Rank {_RANK_FOR_SIGNAL_HANDLER}] SLURM preemption signal received. "
         "Preparing to checkpoint and exit...",
         flush=True,
     )
@@ -179,6 +189,8 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # 2. SLURM signal handler
     # ------------------------------------------------------------------
+    global _RANK_FOR_SIGNAL_HANDLER
+    _RANK_FOR_SIGNAL_HANDLER = global_rank
     signal.signal(signal.SIGUSR1, handle_sigusr1)
 
     # Self-report this rank's PID so the SLURM wrapper script's SIGUSR1

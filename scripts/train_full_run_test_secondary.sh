@@ -18,20 +18,25 @@
 # 4): closest to 4 that's realistically gettable without risking another
 # multi-hour IllinoisComputes-GPU-style wait -- prior 2-way tests already
 # confirmed non-MIG GPUs avoid the "Duplicate GPU detected" bug (which was
-# about MIG slice aliasing, not GPU count), so 3-way is just added margin,
-# not the last open question. --mem=128G (naively scaled from the 2-way
-# test's working 96G) OOM'd within 2 minutes at 3 ranks (job 10220794, 5
-# oom_kill events, rank 2 SIGKILLed) -- each rank runs its own 4 DataLoader
-# workers plus pinned buffers, so memory scales with rank count faster than
-# a simple per-GPU ratio suggests. Bumped to 192G.
+# about MIG slice aliasing, not GPU count).
+#
+# 2026-08-29, second thought: tried 3-way (bumping --mem to 192G after an
+# OOM at 128G -- job 10220794, 5 oom_kill events), but that request then
+# sat PENDING because nothing on secondary currently had 3 free H100s +
+# 192G free mem at once -- a much harder bin to fill than 2-way. Dropped
+# back to 2 GPUs / 96G: DDP-cleanliness on non-MIG hardware is already
+# answered by three separate 2-way runs, so holding out for 3-way bought
+# no new information, just a longer queue wait for a question (SIGUSR1
+# graceful-exit, where rank 0 currently goes silent) that's orthogonal to
+# GPU count anyway.
 #SBATCH --job-name=flux_train_full_test_sec
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --gres=gpu:H100:3
+#SBATCH --gres=gpu:H100:2
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=192G
+#SBATCH --mem=96G
 #SBATCH --time=00:30:00
 #SBATCH --signal=B:SIGUSR1@1200
 #SBATCH --output=logs/train_full_test_sec_%j.out
@@ -80,7 +85,7 @@ PILOT_PROTEINS="16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1
 
 srun torchrun \
     --standalone \
-    --nproc_per_node=3 \
+    --nproc_per_node=2 \
     training/train.py \
     --scratch-dir /scratch/arjunc4/fluxion_data_diag \
     --proteins     "$PILOT_PROTEINS" \
