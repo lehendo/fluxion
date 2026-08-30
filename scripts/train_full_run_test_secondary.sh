@@ -37,6 +37,15 @@
 # config -- job 10214022 ran fine on this same node with the same 96G
 # request earlier). Excluding both explicitly so Slurm places us on a
 # less-contended secondary H100 node instead of rolling the dice again.
+# 2026-08-29, fourth thought: excluding 423/424 didn't help -- job
+# 10224795 landed on ccc0420 (a different node) and STILL OOM'd, dying at
+# a similar ~250-400 step count into the resume regardless of which
+# physical node it lands on. That pattern fits "2 ranks x 4 DataLoader
+# workers = 8 total workers don't reliably fit in 96G" better than "bad
+# luck with a noisy neighbor each time" -- 96G was validated for the
+# single-GPU/4-worker case (job 10190243), never explicitly re-validated
+# for 2-rank/8-worker. Bumped to 160G for headroom regardless of which
+# explanation is actually true.
 #SBATCH --exclude=ccc0423,ccc0424
 #SBATCH --job-name=flux_train_full_test_sec
 #SBATCH --partition=secondary
@@ -45,7 +54,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:H100:2
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=96G
+#SBATCH --mem=160G
 #SBATCH --time=00:30:00
 #SBATCH --signal=B:SIGUSR1@1200
 #SBATCH --output=logs/train_full_test_sec_%j.out
