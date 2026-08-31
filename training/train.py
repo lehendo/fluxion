@@ -297,8 +297,30 @@ def main(args: argparse.Namespace) -> None:
 
         for (z0, z1), pair, _frame_idx, padding_mask in dataloader:
 
-            # Preemption check — save on rank 0, then all ranks exit cleanly
-            if PREEMPTION_REQUESTED:
+            # Preemption check, coordinated across ranks. SIGUSR1 arrives
+            # asynchronously and independently per rank, so checking only
+            # the LOCAL flag is unsafe: a rank that receives it slightly
+            # earlier can race ahead into this exit-only dist.barrier()
+            # while another rank is still mid-collective on the ORDINARY
+            # per-step gradient all-reduce inside loss.backward() below --
+            # each then waits on a different collective the other rank
+            # never joins, deadlocking until NCCL's watchdog times out
+            # (confirmed: job 10246771, rank 1's watchdog timed out after
+            # 600s waiting on an ALLREDUCE while rank 0 had already reached
+            # this barrier and printed its "Graceful exit" line). This
+            # all_reduce is safe to call here specifically because every
+            # rank only reaches the top of this loop after finishing the
+            # SAME previous step's collectives together -- i.e. all ranks
+            # are already mutually synchronized at this exact point,
+            # regardless of whether any individual rank's flag was already
+            # set moments earlier. It forces a unanimous, synchronized
+            # decision before anyone is allowed to diverge into the
+            # exit-only path.
+            preemption_flag = torch.tensor(
+                [1 if PREEMPTION_REQUESTED else 0], device=device, dtype=torch.int32
+            )
+            dist.all_reduce(preemption_flag, op=dist.ReduceOp.MAX)
+            if preemption_flag.item() == 1:
                 if global_rank == 0:
                     save_checkpoint(
                         checkpoint_dir, step, epoch,
