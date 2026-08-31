@@ -111,5 +111,27 @@ srun torchrun \
     --lr 1e-4 \
     --epochs 1 \
     --log-interval 10 &
+CHILD_PID=$!
 
-wait $!
+# 2026-08-30 fix: found the REAL root cause of every prior attempt's
+# failure. `wait $!` returns immediately (exit status 128+signum) the
+# moment a TRAPPED signal interrupts it -- it does not wait for the
+# background job to actually finish. Since this batch script is the job's
+# root process, the instant it falls through to its own end and exits,
+# SLURM tears down the entire job step (including the still-running
+# torchrun/rank processes), killing them mid-checkpoint regardless of how
+# correctly train.py's own signal handling works. Every earlier fix (PID
+# targeting via self-report, removing the async-signal-unsafe
+# dist.get_rank() call) was real progress on OTHER genuine bugs, but this
+# one made every single attempt look like a failure anyway. Fix: after a
+# trapped signal interrupts wait, re-wait on the same PID -- wait on an
+# already-finished process returns immediately with its real exit code, so
+# this loop costs nothing once the child actually exits, but keeps the
+# script (and therefore the job) alive until it does.
+wait "$CHILD_PID"
+RC=$?
+while [ "$RC" -ge 128 ] && kill -0 "$CHILD_PID" 2>/dev/null; do
+    wait "$CHILD_PID"
+    RC=$?
+done
+exit "$RC"
