@@ -28,10 +28,17 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=32
-#SBATCH --mem=256G
+#SBATCH --mem=384G
 #SBATCH --time=71:30:00
 #SBATCH --requeue
 #SBATCH --signal=B:SIGUSR1@120
+# --mem bumped 256G -> 384G (2026-08-31): the verification tests showed
+# memory scales faster than linear with rank count (96G sufficed for
+# 1 rank, 2 ranks needed 160G, not the naively-scaled 128G -- each
+# rank runs its own num_workers=4 DataLoader workers + pinned buffers).
+# Extrapolating to 4 ranks suggests ~288G; 384G leaves real margin for
+# a 72h unattended run, and IllinoisComputes-GPU nodes have 515G-1.5T
+# total so this costs nothing in schedulability.
 #SBATCH --output=logs/train_full_%j.out
 #SBATCH --error=logs/train_full_%j.err
 
