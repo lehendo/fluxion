@@ -26,6 +26,13 @@
 #SBATCH --account=jimeng-ic
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
+# --exclude=ccc0390 (2026-08-31): job 10252106 landed there and failed in
+# 24s -- all 4 ranks hit "device >= 0 && device < num_gpus INTERNAL ASSERT
+# FAILED ... num_gpus=" (blank), meaning CUDA saw zero visible GPUs despite
+# SLURM allocating 4. This node has shown State=drain* in every sinfo scan
+# this session; it looks like it got un-drained without the underlying
+# GPU/driver fault being fixed. Cluster infra issue, not our code.
+#SBATCH --exclude=ccc0390
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=384G
