@@ -43,6 +43,19 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 
+# 2026-09-04 fix: job 10279682 (the real 72h run) died after ~46,650 steps
+# / ~1h with "OSError: [Errno 24] Too many open files". PyTorch's default
+# multiprocessing sharing strategy ('file_descriptor') opens a new fd for
+# every tensor handed from a DataLoader worker to the main process; with
+# 4 ranks x num_workers=4 = 16 workers running for tens of thousands of
+# steps, this eventually exhausts the process's open-file ulimit even
+# though nothing in the training code itself leaked anything. This is a
+# well-documented PyTorch/Linux gotcha (not specific to this codebase) --
+# switching to 'file_system' avoids the fd-per-tensor handoff entirely.
+# Paired with a ulimit bump in the sbatch wrapper scripts as a safety
+# margin on top of this, per PyTorch's own recommended combination.
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
 from training.checkpoint import save_checkpoint, load_checkpoint

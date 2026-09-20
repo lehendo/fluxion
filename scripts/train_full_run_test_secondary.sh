@@ -69,6 +69,13 @@ cd /u/arjunc4/fluxion
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
 
+# 2026-09-04 fix: the real run (job 10279682) died after ~46,650 steps
+# with "Too many open files" -- see training/train.py's
+# set_sharing_strategy fix. Bumping the soft ulimit here too for
+# consistency, though this short test is unlikely to run long enough
+# to hit it.
+ulimit -n 65536
+
 # 2026-08-28 fix, take 3: two prior attempts at guessing torchrun's process
 # tree from outside both failed -- broad `pkill -f "training/train.py"`
 # (job 10206925/10213358) also hit each rank's num_workers=4 DataLoader

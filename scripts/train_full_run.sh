@@ -58,6 +58,13 @@ cd /u/arjunc4/fluxion
 export OMP_NUM_THREADS=4
 export NCCL_ASYNC_ERROR_HANDLING=1
 
+# 2026-09-04 fix: job 10279682 died after ~46,650 steps with "Too many
+# open files" (see training/train.py's set_sharing_strategy fix for the
+# root cause). The default soft ulimit here is only 1024; the hard cap
+# allows up to 524288, so raise the soft limit as a safety margin on top
+# of the file_system sharing-strategy fix.
+ulimit -n 65536
+
 # 2026-08-28 fix, take 3: two prior attempts at guessing torchrun's process
 # tree from outside both failed -- broad `pkill -f "training/train.py"`
 # (job 10206925/10213358) also hit each rank's num_workers=4 DataLoader
