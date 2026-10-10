@@ -1,3 +1,5 @@
+> **CORRECTION NOTICE (2026-10-10).** (1) The quotation attributed to arXiv:2604.25244 was not found in that survey and has been removed below. (2) Architectural "no DiT in protein dynamics" statements are unsupported: SimpleFold (arXiv:2509.18480) states a DiT architecture and evaluates on ATLAS. (3) The numbers in the post-fix results section below (e.g. lag-sweep improvements) are improvement-over-mean figures that were later shown to be dominated by persistence and padding; see experiments/EXPERIMENT_LOG.md and theory.md. Treat this document as a historical record, not as the current novelty position (that is docs/prior_art_search.md).
+
 # Fluxion — Novelty Assessment & Literature Review
 
 **Date:** 2026-07-03 (surface-level pass), deep-verified 2026-07-03 same day (direct quotes pulled from primary sources for all 15 papers)
@@ -11,7 +13,7 @@
 
 ## Verdict
 
-**Zero of the 15 closest papers found satisfy all four criteria**, verified by direct quotes pulled from primary sources (abstract + methods), not secondhand paraphrase. This was checked two ways: (1) a dedicated fetch of the April 2026 survey "Learning Structure, Energy, and Dynamics: A Survey of AI for Protein Dynamics" (arXiv:2604.25244), which explicitly concluded "DiT-style architectures appear absent from the protein dynamics literature surveyed" and found no method satisfying all four criteria; (2) a paper-by-paper deep read of all 15 closest competitors, each checked against all four criteria individually with quoted evidence.
+**Zero of the 15 closest papers found satisfy all four criteria**, verified by direct quotes pulled from primary sources (abstract + methods), not secondhand paraphrase. This was checked two ways: (1) a dedicated fetch of the April 2026 survey "Learning Structure, Energy, and Dynamics: A Survey of AI for Protein Dynamics" (arXiv:2604.25244) [CORRECTED 2026-10-10: the sentence previously quoted here, "DiT-style architectures appear absent from the protein dynamics literature surveyed", is NOT in the survey text (searched ~200k of 220k characters, see docs/prior_art_search.md); the survey makes no claim about DiT-style architectures, and the claim was removed]; (2) a paper-by-paper deep read of all 15 closest competitors, each checked against all four criteria individually with quoted evidence.
 
 **Three papers' primary sources were inaccessible** (bioRxiv blocked all fetch attempts with Cloudflare 403s: BioKinema, AlphaFold Latent Flooding, DynaFold). Their entries below rest on secondary sources (author posts, GitHub READMEs, independent surveys) and are flagged explicitly — treat as unverified, not cleared, until read directly (e.g. via institutional/authenticated bioRxiv access).
 

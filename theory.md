@@ -104,7 +104,15 @@ batch grows, so the regression target δ → 0: a genuinely degenerate objective
 (A3); only `training/train_static.py` (noise → equilibrium frame, whose marginals differ) uses OT coupling. We therefore do not
 attribute the trained model's behaviour to OT re-coupling, and the Hungarian-vs-adjacent displacement comparison planned in 2B was not run.
 
-## 7. Prior-art search (Phase 2C)
+## 7. Prior-art position (Phase 2C; full query log in `docs/prior_art_search.md`)
 
-Status and the full query log are recorded in `docs/prior_art_search.md`. Until that is complete, **no claim in this document
-is asserted as new**; Propositions 1–3 are elementary and may well be folklore.
+* The vanishing of the optimal velocity at the midpoint for *i.i.d.* endpoints with equal marginals is published (Midpoint Generative Models,
+  arXiv:2605.29920, Prop 3.1). Proposition 2 here is the same swap argument applied to exchangeable observed pairs (stationarity +
+  reversibility), a one-line generalization; we do not claim it as new beyond that.
+* In the pages read we did not find the attenuation result (Proposition 3), the Gaussian closed form with the [2.33, 3.0] bound, or its use to
+  diagnose CFM on temporally coupled MD frames. This is a search negative (19 calls; Midpoint's appendices and part of the survey unread),
+  not evidence of novelty. Propositions 1-3 are elementary and may be folklore; a deeper search is required before any novelty wording.
+* Kernel-Stabilized Flow Matching (arXiv:2411.08314) was reported by a search tool to state zero velocity under identical marginals; the paper
+  text read does not say this, and we do not cite it for that.
+* Closest published settings to position against: DeepJump (arXiv:2509.13294, CFM between conformations a fixed step apart) and stochastic-interpolant
+  forecasting (arXiv:2403.13724, conditional on the present state).
