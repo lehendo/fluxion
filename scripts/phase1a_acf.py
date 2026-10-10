@@ -116,7 +116,7 @@ def print_table(res: dict) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--latents-dir", type=Path, default=Path("/scratch/arjunc4/fluxion_data/latents"))
-    ap.add_argument("--sequences-json", type=Path, default=Path("/scratch/arjunc4/fluxion_data/atlas_sequences.json"))
+    ap.add_argument("--sequences-json", type=Path, default=Path("/scratch/arjunc4/fluxion_data/extraction_metadata.json"))
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--proteins", nargs="+", default=PILOT)
     ap.add_argument("--seed", type=int, default=0)

@@ -11,7 +11,7 @@ Chai-1 saw, so the padding mask can be derived from sequence length instead of b
 inferred from zero variance.
 
 Also leaves the extracted trajectories in place for Phase 1B (Cartesian control).
-Output: <out-root>/atlas_sequences.json
+Output: <out-root>/atlas_refetch_sequences.json
 """
 from __future__ import annotations
 import argparse, json, sys, zipfile
@@ -46,7 +46,7 @@ def fetch(protein: str, dest: Path) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--raw-dir", type=Path, default=Path("/scratch/arjunc4/atlas_raw"))
-    ap.add_argument("--out", type=Path, default=Path("/scratch/arjunc4/fluxion_data/atlas_sequences.json"))
+    ap.add_argument("--out", type=Path, default=Path("/scratch/arjunc4/fluxion_data/atlas_refetch_sequences.json"))
     ap.add_argument("--proteins", nargs="+", default=PILOT)
     args = ap.parse_args()
     out = json.loads(args.out.read_text()) if args.out.exists() else {}

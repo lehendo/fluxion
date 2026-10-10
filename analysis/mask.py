@@ -20,7 +20,7 @@ import torch
 def n_residues(sequences_json: Path, protein: str) -> int:
     data = json.loads(Path(sequences_json).read_text())
     if protein not in data:
-        raise KeyError(f"{protein} missing from {sequences_json}; run scripts/fetch_atlas_sequences.py")
+        raise KeyError(f"{protein} missing from {sequences_json}; run scripts/build_extraction_metadata.py")
     return int(data[protein]["n_residues"])
 
 

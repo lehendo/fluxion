@@ -8,7 +8,7 @@ For one protein and each lag, samples K valid start frames (self-pairs excluded 
 see LatentDataset: within `lag` frames of a replica's end z1 self-pairs to z0), then
 keeps P random REAL-residue positions per frame as rows (z0, z1, [z_prev at lag 1]).
 Chai-1 bucket-padding positions are excluded from rows; the mask comes from the sequence
-length (atlas_sequences.json) and zero frame-variance is only asserted, never used to build it.
+length (extraction_metadata.json) and zero frame-variance is only asserted, never used to build it.
 
 Optionally scores the existing DiT checkpoint, IN-SAMPLE (it was trained on all 19
 proteins), as a z1 predictor on the identical rows: z1_hat = Euler-integrate the
@@ -88,7 +88,7 @@ def main() -> None:
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--sequences-json", type=Path,
-                    default=Path("/scratch/arjunc4/fluxion_data/atlas_sequences.json"))
+                    default=Path("/scratch/arjunc4/fluxion_data/extraction_metadata.json"))
     ap.add_argument("--dit-checkpoint", type=Path, default=None)
     ap.add_argument("--dit-steps", type=int, nargs="+", default=[1, 8])
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
