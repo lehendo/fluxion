@@ -383,3 +383,28 @@ Already seen before this pre-registration: the half-window shift column of the f
 takes the max over all three, and the half-window-only variant is also reported. The original and revised verdicts are shown side by side; (i), (ii) unchanged.
 Reason not to rescue proteins: criterion thresholds (0.20, 0.15) are unchanged. If the revised criterion passes more proteins, B1 is re-run on the
 revised set and reported under BOTH the 8-protein and revised-set versions; B1's kill condition is evaluated on each.
+
+=====================================================================================================================
+2026-10-11. RESULT OF THE POST HOC REVISED CRITERION (iii') (job 11275134; results/phase1/atlas/verification_revised_table.txt, atlas_verification_revised.json).
+Criteria (i), (ii): PASS 19/19 (unchanged). Criterion (iii): pre-registered original PASS 8/19; REVISED (iii') PASS 13/19; half-window-only variant PASS 15/19.
+  aligned rho | within-replica shifts 1/4, 1/2, 3/4 | cross-replica R2, R3 (confound, not gating)
+  newly PASS under revised: 1af7_A .618 | .151 -.067 .020 | .541 .512     1b25_D .685 | .172 .017 .191 | .445 .627     1b2s_E .664 | .194 .367 .030 | .558 .350
+                            1b8d_K .704 | .018 -.129 -.075 | .571 .199    1bkp_A .488 | .153 .253 .199 | .410 .312
+  still FAIL under revised: 16pk_A .223 | .101 .163 .140 (margin .06)   1a62_A .328 | .326 -.005 .212 (1/4 shift .326 ~ aligned)   1ail_A .071 (< .20)
+                            1b0n_A .548 | .240 .459 .309 (margin .09)   1bgf_A .314 | .037 .352 .009 (margin -.04)   1bx7_A .260 | .069 .042 .287 (margin -.03)
+  (1a62_A and 1bx7_A pass under the half-window-only variant; the max over three shifts rejects them.)
+Thresholds (0.20, 0.15) unchanged. Honest reading: six proteins stay unverified under the stricter within-replica max control. For 1b0n_A and 1bgf_A the
+half-window shifted latents correlate with the Calpha RMSD matrix as strongly as the aligned ones, i.e. these trajectories revisit similar structures
+at 25-75 ns offsets, so the Mantel test cannot discriminate; that is a limit of the test on those proteins, not evidence of a frame mismatch. 1ail_A has
+aligned rho .071: Calpha RMSD and the latent distance are only weakly related there, regardless of control. None of the six is called mismatched.
+The first failure analysis stands as the explanation of the original criterion's failure (cross-replica controls are confounded by the shared starting
+structure; cross-replica rho 0.15-0.63 is expected), and the original verdicts remain reported side by side with the revised ones everywhere.
+B1 RE-RUN on the revised set (13 proteins = 11 PDB entries; 1b2s_E/F share an entry, 1bxy_A/B share an entry): the five new proteins are run now
+(job below); B1 is then reported under BOTH the 8-protein (7-entry) set and the 13-protein (11-entry) set. KILL CONDITION unchanged and evaluated on each:
+the premise 'no learnability advantage' is the null; the finding that Chai-1 offers an advantage requires the paired-difference CI (linear_diag and shrinkage rows)
+to lie above 0 at lags <= 10 ns; if the CI includes 0 or lies below 0 the 'no advantage' statement stands.
+CLAIM LANGUAGE (fixed here, for every document): Chai-1 latents are a deterministic function of coordinates plus sequence, so B1 cannot show the latents contain
+less information. B1 tests learnability only. The claim is: 'frozen Chai-1 trunk latents offer no learnability advantage over matched-dimension aligned-Calpha PCA for
+linear or MLP probes at lags >= 100 ps.' Matching Cartesian is the expected null; this is a failure to find an advantage, not a surprise. The interesting counterfactual
+(an advantage at 10 ps, where the DiT trained) is unreachable with 100 ps analysis frames. Comparison rests on the identity-relative and shrinkage-relative rows;
+the full-linear and MLP rows overfit at ~2000 pairs per protein in both representations and are not used for the claim.
