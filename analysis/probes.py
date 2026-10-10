@@ -163,28 +163,38 @@ class OldMLPProbe(nn.Module):
 
 
 def train_old_mlp(zp_tr, z0_tr, z1_tr, zp_va, z0_va, z1_va, hidden=256, lr=1e-3, batch_size=1024,
-                  max_epochs=30, patience=4, device="cpu", seed=0):
+                  max_epochs=30, patience=4, device="cpu", seed=0, val_chunk=100_000):
     """Adam, batch 1024, <=30 epochs, patience 4, early stop on the GIVEN validation rows.
-    S0.0 passes the TEST proteins here (the old leak); S0.1+ pass training-side entries."""
+    S0.0 passes the TEST proteins here (the old leak); S0.1+ pass training-side entries.
+    Data stays on the CPU (as in the old script) and batches are moved per step, so this fits any GPU
+    (a first version held the ~10 GB training set on the device and OOM'd on a 14.5 GB card)."""
     torch.manual_seed(seed)
     dev = torch.device(device)
     model = OldMLPProbe(z0_tr.shape[1], hidden).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
-    zp_tr, z0_tr, z1_tr = zp_tr.to(dev), z0_tr.to(dev), z1_tr.to(dev)
-    zp_va, z0_va, z1_va = zp_va.to(dev), z0_va.to(dev), z1_va.to(dev)
     n, best, state, bad, ep = z0_tr.shape[0], float("inf"), None, 0, 0
+    nva = z0_va.shape[0]
+
+    def val_mse():
+        model.eval()
+        tot = 0.0
+        with torch.no_grad():
+            for a in range(0, nva, val_chunk):
+                sl = slice(a, a + val_chunk)
+                pred = model(zp_va[sl].to(dev), z0_va[sl].to(dev))
+                tot += ((pred - z1_va[sl].to(dev)) ** 2).sum().item()
+        return tot / (nva * z1_va.shape[1])
+
     for _ in range(max_epochs):
         model.train()
-        perm = torch.randperm(n, device=dev)
+        perm = torch.randperm(n)
         for s0 in range(0, n, batch_size):
             i = perm[s0:s0 + batch_size]
             opt.zero_grad(set_to_none=True)
-            nn.functional.mse_loss(model(zp_tr[i], z0_tr[i]), z1_tr[i]).backward()
+            nn.functional.mse_loss(model(zp_tr[i].to(dev), z0_tr[i].to(dev)), z1_tr[i].to(dev)).backward()
             opt.step()
         ep += 1
-        model.eval()
-        with torch.no_grad():
-            v = nn.functional.mse_loss(model(zp_va, z0_va), z1_va).item()
+        v = val_mse()
         if v < best - 1e-8:
             best, bad, state = v, 0, {k: t.detach().clone() for k, t in model.state_dict().items()}
         else:
