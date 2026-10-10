@@ -7,7 +7,8 @@ Builds the row cache for the identity-relative rescoring (Phase 1A).
 For one protein and each lag, samples K valid start frames (self-pairs excluded --
 see LatentDataset: within `lag` frames of a replica's end z1 self-pairs to z0), then
 keeps P random REAL-residue positions per frame as rows (z0, z1, [z_prev at lag 1]).
-Chai-1 bucket-padding positions (zero frame variance) are excluded from rows.
+Chai-1 bucket-padding positions are excluded from rows; the mask comes from the sequence
+length (atlas_sequences.json) and zero frame-variance is only asserted, never used to build it.
 
 Optionally scores the existing DiT checkpoint, IN-SAMPLE (it was trained on all 19
 proteins), as a z1 predictor on the identical rows: z1_hat = Euler-integrate the
@@ -34,6 +35,7 @@ import torch
 from torch.utils.data import DataLoader, Subset
 
 from data_pipeline.dataset import LatentDataset, _REPLICA_RE
+from analysis.mask import n_residues, real_mask, verify_mask
 
 DEFAULT_LAGS = (1, 10, 100, 1000, 5000)
 
@@ -49,15 +51,6 @@ def collate(batch):
 def replica_code(ds: LatentDataset, flat_idx: int) -> int:
     m = _REPLICA_RE.search(ds.index_map[flat_idx][0].name)
     return int(re.sub(r"\D", "", m.group(1))) if m else 0
-
-
-def real_position_mask(ds: LatentDataset, n_probe: int, seed: int) -> torch.Tensor:
-    """Positions whose normalized latent varies across frames. Bucket padding is
-    constant (frame-std exactly 0), real residues are not."""
-    g = torch.Generator().manual_seed(seed)
-    idx = torch.randperm(len(ds), generator=g)[:n_probe].tolist()
-    z = torch.stack([ds._load_frame(i) for i in idx])           # [n, L, d]
-    return z.var(dim=0).sum(dim=-1) > 1e-12                      # [L] bool
 
 
 @torch.no_grad()
@@ -94,6 +87,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--batch-size", type=int, default=16)
+    ap.add_argument("--sequences-json", type=Path,
+                    default=Path("/scratch/arjunc4/fluxion_data/atlas_sequences.json"))
     ap.add_argument("--dit-checkpoint", type=Path, default=None)
     ap.add_argument("--dit-steps", type=int, nargs="+", default=[1, 8])
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -110,14 +105,20 @@ def main() -> None:
                              norm_stats=ns, lag=1).static_pair.to(dev)
         print(f"[extract] DiT loaded (step {ckpt_step}), pair {tuple(pair.shape)}", flush=True)
 
-    # --- real-position mask (once per protein) ---
+    # --- real-position mask: DERIVED FROM SEQUENCE LENGTH; variance only asserts it ---
     ds_probe = LatentDataset(args.latents_dir, args.protein, load_pair=False, norm_stats=ns, lag=1)
-    real = real_position_mask(ds_probe, n_probe=48, seed=args.seed)
-    L = real.shape[0]
+    L = ds_probe._load_frame(0).shape[0]
+    n_res = n_residues(args.sequences_json, args.protein)
+    real = real_mask(L, n_res)
+    g_probe = torch.Generator().manual_seed(args.seed)
+    probe_idx = torch.randperm(len(ds_probe), generator=g_probe)[:48].tolist()
+    mask_info = verify_mask(real, torch.stack([ds_probe._load_frame(i) for i in probe_idx]))
     real_idx = real.nonzero().squeeze(1)
     n_real = int(real.sum())
-    print(f"[extract] {args.protein}: L_bucket={L}, real residues={n_real} "
-          f"({100 * (L - n_real) / L:.1f}% bucket padding excluded)", flush=True)
+    print(f"[extract] {args.protein}: L_bucket={L}, n_residues(sequence)={n_res}, "
+          f"padded={mask_info['n_padded']} ({100 * mask_info['n_padded'] / L:.1f}%), "
+          f"mask verified constant; real positions with zero variance: "
+          f"{mask_info['n_real_with_zero_variance']}", flush=True)
     d = ds_probe._load_frame(0).shape[-1]
     sum_pos = torch.zeros(L, d, dtype=torch.float64)
     cnt = 0
@@ -190,7 +191,8 @@ def main() -> None:
         print(msg, flush=True)
 
     torch.save({"protein": args.protein, "L_bucket": L, "n_real": n_real, "real_mask": real,
-                "mean_pos": (sum_pos / cnt).float(), "n_frames_for_mean": cnt},
+                "mean_pos": (sum_pos / cnt).float(), "n_frames_for_mean": cnt,
+                "mask_info": mask_info, "mask_source": "sequence_length"},
                args.out_dir / f"{args.protein}__meta.pt")
     print("[extract] done", flush=True)
 

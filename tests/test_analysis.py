@@ -144,3 +144,51 @@ class TestMLP:
         m, best, ep = train_mlp(z0[:5000], z1[:5000], z0[5000:], z1[5000:],
                                 hidden=64, max_epochs=15, batch_size=256)
         assert best < 0.01 * z1.var().item() + 1e-3 and ep >= 1
+
+
+from analysis.stats import integrated_autocorr_time, block_len, n_eff_blocks, n_independent_windows
+from analysis.mask import real_mask, verify_mask
+
+
+class TestAutocorr:
+    def test_exponential_decay_recovers_time_constant(self):
+        T = 40.0
+        taus = np.array([1, 2, 4, 8, 16, 32, 64, 128, 256, 512], dtype=float)
+        tau_int = integrated_autocorr_time(taus, np.exp(-taus / T))
+        assert tau_int == pytest.approx(T, rel=0.2)
+
+    def test_floor_stops_noisy_tail_from_being_integrated(self):
+        taus = np.array([1, 10, 100, 1000, 5000], dtype=float)
+        rho = np.array([0.9, 0.5, 0.02, 0.4, 0.4])   # spurious late bump must be ignored
+        clean = integrated_autocorr_time(taus, rho[:3])
+        assert integrated_autocorr_time(taus, rho) == pytest.approx(clean)
+
+    def test_block_len_covers_the_lag(self):
+        assert block_len(1, 0.0) == 1 and block_len(100, 20.0) == 140
+
+    def test_long_lag_has_few_independent_blocks(self):
+        reps = [10001] * 3
+        assert n_independent_windows(reps, 5000) == 6           # 2 per replica
+        assert n_eff_blocks(reps, 5000, 300.0) < 6              # fewer once tau_int is counted
+        assert n_eff_blocks(reps, 1, 300.0) > 40                # short lag: plenty
+
+
+class TestMask:
+    def test_mask_from_length(self):
+        m = real_mask(8, 5)
+        assert m.tolist() == [True] * 5 + [False] * 3
+
+    def test_verify_accepts_correct_mask_and_keeps_rigid_residues(self):
+        g = torch.Generator().manual_seed(0)
+        z = torch.randn(20, 8, 4, generator=g)
+        z[:, 5:] = 3.0                      # padding is constant
+        z[:, 2] = 1.0                       # a genuinely rigid REAL residue
+        info = verify_mask(real_mask(8, 5), z)
+        assert info["n_padded"] == 3 and info["n_real_with_zero_variance"] == 1
+        assert real_mask(8, 5)[2]           # rigid residue stays in the mask
+
+    def test_verify_rejects_a_wrong_mask(self):
+        z = torch.randn(20, 8, 4)
+        z[:, 6:] = 3.0                      # only 2 constant positions
+        with pytest.raises(AssertionError):
+            verify_mask(real_mask(8, 5), z)  # claims 3 padded; one of them varies

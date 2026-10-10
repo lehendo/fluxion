@@ -17,6 +17,7 @@ Conventions
 
 from __future__ import annotations
 
+import math
 import re
 from collections import defaultdict
 
@@ -117,3 +118,47 @@ def entry_bootstrap_mean(
 
 def ci_excludes_zero(lo: float, hi: float) -> bool:
     return lo > 0.0 or hi < 0.0
+
+
+# ---------------------------------------------------------------------------
+# Autocorrelation-based block length and effective sample size
+# ---------------------------------------------------------------------------
+
+def integrated_autocorr_time(taus, rho, floor: float = 0.05) -> float:
+    """
+    tau_int = integral of rho(tau) d tau, rho(0) = 1, trapezoid over the measured grid,
+    truncated where rho first falls below `floor` (linear interpolation of the crossing).
+    Units: frames. A noisy long-lag tail is never integrated past the floor.
+    """
+    t = np.concatenate([[0.0], np.asarray(taus, dtype=float)])
+    r = np.concatenate([[1.0], np.asarray(rho, dtype=float)])
+    total = 0.0
+    for i in range(1, len(t)):
+        if r[i] < floor:
+            if r[i - 1] > floor:       # integrate up to the crossing point
+                tc = t[i - 1] + (r[i - 1] - floor) / (r[i - 1] - r[i]) * (t[i] - t[i - 1])
+                total += 0.5 * (r[i - 1] + floor) * (tc - t[i - 1])
+            break
+        total += 0.5 * (r[i - 1] + r[i]) * (t[i] - t[i - 1])
+    return float(total)
+
+
+def block_len(lag: int, tau_int: float) -> int:
+    """
+    Block length (frames) for the time-block bootstrap. Pairs (i, i+lag) and (j, j+lag)
+    share information while their windows overlap or lie within ~tau_int of each other, so
+    start-frame blocks must span at least lag + 2*tau_int.
+    """
+    return int(math.ceil(lag + 2.0 * tau_int))
+
+
+def n_eff_blocks(frames_per_replica: list[int], lag: int, tau_int: float) -> float:
+    """Effective number of independent pair-blocks: sum over replicas of valid start span
+    divided by the block length (fractional; <1 per replica means not even one clean block)."""
+    bl = block_len(lag, tau_int)
+    return float(sum(max(n - lag, 0) / bl for n in frames_per_replica))
+
+
+def n_independent_windows(frames_per_replica: list[int], lag: int) -> int:
+    """Autocorrelation-free count: non-overlapping lag-length windows per replica."""
+    return int(sum(n // lag for n in frames_per_replica))

@@ -56,3 +56,35 @@ persistence in this latent space and that is the paper's central empirical findi
 Step-0 kill: if identity MSE in the probe pipeline differs from 0.002079 by more than
 sampling error, the pipelines are NOT on a common scale and every comparison so far is
 suspect; stop and report before running the sweep.
+
+## Pre-registration addendum, 2026-10-09 (before the 19-protein extraction and Step 0 run)
+
+Status of Correction 1 (brief's 89.3% / 21.2% / 18.2%): PROVISIONAL. It was backed out of
+reported figures that were padding-diluted and (for the MLP) selected on the test split.
+The masked Step 0 numbers, not the reconstruction, decide the framing. The MLP's true
+improvement over identity is expected to be BELOW 18.2%.
+
+S0-TOL. Step 0 "reproduces" the old numbers iff, under the DiT/old-probe weighting (bucket
+padding counted as zero-error tokens), each of identity (vs 0.002079), mean (vs 0.01944) and
+linear(z0,zprev) (vs 0.001638) lies within +/-10% relative of the old value. Rationale: the old
+numbers each carry sampling error of a few percent (the DiT baseline used 400 samples) and
+ours carries its own, so two noisy estimates should agree to ~10%. The MLP is excluded from the
+pass/fail because the old value was selected on the test split. Actual deltas are reported
+either way. KILL: any FAIL is a sixth finding; stop and understand before the sweep.
+
+MASK. The padding mask is derived from sequence length (atlas_sequences.json, from the ATLAS
+topology via the extractor's own residue rule). Zero frame-variance is only an assertion: every
+masked position must be constant AND masked count == L_bucket - n_residues. A violation aborts.
+(ATLAS raw files had been purged from scratch; re-fetched by scripts/fetch_atlas_sequences.py.)
+
+BLOCKS / n_eff. Block length per protein per lag = ceil(lag + 2*tau_int), tau_int measured from the
+latent structure function (scripts/phase1a_acf.py): rho(tau) = 1 - S(tau)/(2V), integrated until
+rho < 0.05. n_eff = sum over replicas of (n_frames - lag) / block_len. The nominal pair count is
+held constant at 600 starts per (protein, lag); n_eff is NOT constant across lags and is
+reported next to it. The lag range (cap at 10 ns vs keep 50 ns marked uninterpretable) is decided
+by the user after seeing the n_eff table, before the sweep.
+
+LABELS. The DiT is in-sample (trained on all 19 proteins) and is keyed "DiT[in-sample]_*" in every
+output; every table/figure/caption must carry that label. Probes are leave-one-PDB-entry-out.
+
+MLP SELECTION. Early stopping uses two held-in entries only; never the held-out fold.

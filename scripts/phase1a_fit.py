@@ -31,13 +31,14 @@ from analysis.probes import (
     train_mlp, row_sqerr,
 )
 from analysis.stats import (
-    entry_groups, pct_improvement, lag_frames_to_label, time_blocks,
+    entry_groups, pct_improvement, lag_frames_to_label, time_blocks, block_len,
     block_bootstrap_improvement, entry_bootstrap_mean, ci_excludes_zero,
 )
 
 PILOT = ("16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1b2s_E,1b2s_F,"
          "1b8d_K,1bgf_A,1bkp_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B").split(",")
 OLD_VAL = ["1bxy_A", "1bxy_B", "1btk_A"]
+STEP0_REL_TOL = 0.10   # pre-registered in experiments/EXPERIMENT_LOG.md before running
 OLD_REPORTED = {"mean": 0.01944, "linear(z0,zprev)": 0.001638, "mlp(z0,zprev)": 0.001701,
                 "identity (DiT flow baseline)": 0.002079}
 
@@ -95,8 +96,6 @@ def step0(cache: Path, device: str, out: Path) -> None:
             per = [c["dit_sqerr"][k].mean().item() for c in va]
             dit[k] = {"real_tokens_only": pooled(per, n_real),
                       "padding_counted_as_zero_error": float(sum(nr * m for nr, m in zip(n_real, per)) / sum(L_b))}
-    out.write_text(json.dumps({"old_reported": OLD_REPORTED, "new_pipeline": table, "dit_in_sample": dit,
-                               "val_proteins": OLD_VAL, "n_real": n_real, "L_bucket": L_b}, indent=2))
 
     print("\n=== STEP 0: old split, lag 1 (10 ps) ===")
     print(f"{'quantity':34s} {'old reported':>13s} {'new (pad counted)':>18s} {'new (real only)':>16s}")
@@ -110,6 +109,24 @@ def step0(cache: Path, device: str, out: Path) -> None:
     print(f"{'linear(z0) only [new]':34s} {'-':>13s} {t['padding_counted_as_zero_error']:18.6f} {t['real_tokens_only']:16.6f}")
     for k, v in dit.items():
         print(f"{'DiT in-sample ' + k:34s} {'0.002080 (raw)':>13s} {v['padding_counted_as_zero_error']:18.6f} {v['real_tokens_only']:16.6f}")
+    checks = []
+    for old_k, new_k in pairs:
+        new_v = table[new_k]["padding_counted_as_zero_error"]
+        rel = (new_v - OLD_REPORTED[old_k]) / OLD_REPORTED[old_k]
+        checks.append((old_k, OLD_REPORTED[old_k], new_v, rel, abs(rel) <= STEP0_REL_TOL))
+    print(f"\n--- reproduction check, padding-counted weighting, tolerance +/-{100 * STEP0_REL_TOL:.0f}% relative ---")
+    for name, old_v, new_v, rel, ok in checks:
+        print(f"{name:34s} old={old_v:.6f} new={new_v:.6f} delta={100 * rel:+6.2f}%  {'PASS' if ok else 'FAIL'}")
+    print("STEP0 REPRODUCTION:", "PASS (all within tolerance)" if all(c[4] for c in checks)
+          else "FAIL -> sixth finding; stop and understand before any sweep")
+    r_old = OLD_REPORTED["linear(z0,zprev)"] / OLD_REPORTED["identity (DiT flow baseline)"]
+    r_new = table["linear(z0,zprev)"]["padding_counted_as_zero_error"] / table["identity"]["padding_counted_as_zero_error"]
+    print(f"ratio linear/identity: old {r_old:.3f}  new {r_new:.3f}  delta {100 * (r_new / r_old - 1):+.2f}%")
+    out.write_text(json.dumps({"old_reported": OLD_REPORTED, "new_pipeline": table, "dit_in_sample": dit,
+                               "val_proteins": OLD_VAL, "n_real": n_real, "L_bucket": L_b,
+                               "tolerance_rel": STEP0_REL_TOL,
+                               "checks": [dict(zip(("name", "old", "new", "rel_delta", "pass"), c)) for c in checks]},
+                              indent=2))
     ident_pad = table["identity"]["padding_counted_as_zero_error"]
     print(f"\nidentity MSE reproduced under the DiT's weighting: {ident_pad:.6f} vs reported 0.002079 "
           f"-> ratio {ident_pad / 0.002079:.3f}")
@@ -155,12 +172,13 @@ def run_fold(cells, held_entry, groups, lag, device, seed):
         out[p] = {n: row_sqerr(pr, y).numpy() for n, pr in preds.items()}
         if c["dit_sqerr"]:
             for n, e in c["dit_sqerr"].items():
-                out[p][f"dit_{n}"] = e.numpy()
+                out[p][f"DiT[in-sample]_{n}"] = e.numpy()
     return out, {"mlp_epochs": ep, "mlp_inner_val": v, "inner_entries": sorted(inner)}
 
 
-def sweep(cache: Path, lags, device, out_dir: Path, seed: int, n_boot: int) -> None:
+def sweep(cache: Path, lags, device, out_dir: Path, seed: int, n_boot: int, acf_path: Path) -> None:
     groups = entry_groups(PILOT)
+    acf = json.loads(acf_path.read_text())   # per-protein measured tau_int (scripts/phase1a_acf.py)
     out_dir.mkdir(parents=True, exist_ok=True)
     per_row: dict = {}
     summary = []
@@ -171,7 +189,8 @@ def sweep(cache: Path, lags, device, out_dir: Path, seed: int, n_boot: int) -> N
             for p, errs in fold.items():
                 per_row[(p, lag)] = errs
                 c = cells[p]
-                blocks = time_blocks(c["replica"].numpy(), c["frame"].numpy(), max(500, lag))
+                blocks = time_blocks(c["replica"].numpy(), c["frame"].numpy(),
+                                     block_len(lag, acf[p]["tau_int_frames"]))
                 ident = errs["identity"]
                 for name, e in errs.items():
                     if name == "identity":
@@ -221,6 +240,8 @@ def main() -> None:
     ap.add_argument("--cache", required=True, type=Path)
     ap.add_argument("--out-dir", required=True, type=Path)
     ap.add_argument("--step0", action="store_true")
+    ap.add_argument("--acf", type=Path, default=None,
+                    help="acf.json from phase1a_acf.py (required for the sweep: sets block lengths)")
     ap.add_argument("--lags", type=int, nargs="+", default=[1, 10, 100, 1000, 5000])
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--seed", type=int, default=0)
@@ -230,7 +251,9 @@ def main() -> None:
     if args.step0:
         step0(args.cache, args.device, args.out_dir / "step0.json")
     else:
-        sweep(args.cache, args.lags, args.device, args.out_dir, args.seed, args.n_boot)
+        if args.acf is None:
+            raise SystemExit("--acf is required for the sweep (block length must come from measured autocorrelation)")
+        sweep(args.cache, args.lags, args.device, args.out_dir, args.seed, args.n_boot, args.acf)
 
 
 if __name__ == "__main__":
