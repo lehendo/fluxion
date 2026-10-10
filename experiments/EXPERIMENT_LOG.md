@@ -433,3 +433,9 @@ KILL CONDITION as restated on 2026-10-11 ('a Chai-1 advantage requires the CI of
    a per-channel-linear lead for Chai-1 at 100 ps on the 13-protein set (+7.1 [+2.1,+12.5]) concerns a probe both spaces' shrinkage baseline beats.'
 This is a learnability statement, not an information statement, and the earlier phrase 'offer no learnability advantage for linear or MLP probes' is withdrawn as too broad.
 B1 fig: results/phase1/figs/fig4_b1_paired.png.
+
+=====================================================================================================================
+2026-10-11. DOCUMENTS UPDATED: docs/phase1_report.md written (correction-chain table, both verification criteria, B1 on both sets, SNR, prior art); the research-summary doc
+now has a 'Current state' section on top (retitled framing, what died/survived, correction chain) and in-place correction annotations on its two OT-CFM passages;
+original text and earlier correction blocks are kept. Project memory updated. OT-coupling correction is now propagated to: theory.md, README.md, docs/novelty_assessment.md,
+the log, the summary doc, memory.
