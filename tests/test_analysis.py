@@ -220,3 +220,28 @@ class TestOldProbeFaithfulness:
         m, best, ep = train_old_mlp(zp[:3000], z0[:3000], z1[:3000], zp[3000:], z0[3000:], z1[3000:],
                                     hidden=32, max_epochs=30, batch_size=64)
         assert best < 0.5 * z1.var().item()
+
+
+class TestGradientSNREstimators:
+    """scripts/phase1_gradsnr.estimates: unbiased ||E g||^2 and tr Cov(g) from running sums."""
+
+    def test_recovers_known_signal_and_noise(self):
+        from scripts.phase1_gradsnr import estimates
+        g = torch.Generator().manual_seed(0)
+        D, M = 200, 4000
+        mu = torch.zeros(D); mu[:5] = 0.3                       # ||mu||^2 = 0.45
+        sigma = 1.0                                              # tr Cov = D * sigma^2 = 200
+        gs = mu + sigma * torch.randn(M, D, generator=g)
+        mu2, tr = estimates(gs.sum(0), float((gs.double() ** 2).sum()), M)
+        assert abs(mu2 - 0.45) < 0.06 and abs(tr - 200) < 4
+        kstar = tr / mu2
+        assert 300 < kstar < 600                                 # true 200/0.45 = 444
+
+    def test_pure_noise_has_mean_square_norm_near_zero_not_biased_upward(self):
+        from scripts.phase1_gradsnr import estimates
+        g = torch.Generator().manual_seed(1)
+        M, D = 3000, 100
+        gs = torch.randn(M, D, generator=g)
+        mu2, _ = estimates(gs.sum(0), float((gs.double() ** 2).sum()), M)
+        # the naive plug-in ||mean||^2 would be ~ D/M = 0.033; the unbiased estimator is centered on 0
+        assert abs(mu2) < 0.03
