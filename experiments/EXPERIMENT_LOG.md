@@ -138,3 +138,49 @@ HOUSEKEEPING. Commits on branch tmlr up to and including the series starting at 
 at the commit that precedes this addendum's first commit carry a Co-Authored-By trailer; they predate
 the standing no-trailer rule (2026-10-09). Left in place deliberately (history is part of the record,
 not force-pushed). All later commits have none.
+
+## RESULTS, 2026-10-10 (raw numbers first; interpretation separated; files in results/phase1/)
+
+### Step 0 ladder (lag 1 = 10 ps, old split {1bxy_A,1bxy_B,1btk_A}, (z0,z_prev) inputs, old MLP)
+S0.0 reproduction check (old published value inside new bootstrap 95% CI): PASS on all four.
+  mean   old 0.019440  new 0.016131  CI [0.003182, 0.041470]  inside, delta -17.0%  (CI is very wide, see padding below)
+  linear old 0.001638  new 0.001627  CI [0.001583, 0.001675]  inside, delta  -0.7%
+  MLP    old 0.001701  new 0.001681  CI [0.001638, 0.001731]  inside, delta  -1.1%  (3 seeds: 0.001683/0.001684/0.001677)
+  identity (DiT token weighting) old 0.002079  new 0.002096  CI [0.002044, 0.002153]  inside, delta +0.8%
+Ladder (mean-baseline MSE | identity | linear | MLP || id/mean | lin/mean | MLP/mean || lin/id | MLP/id):
+  S0.0 0.016131 0.002096 0.001627 0.001681 || 87.01% 89.92% 89.58% || 22.38% 19.78%
+  S0.1 0.016131 0.002096 0.001627 0.001771 || 87.01% 89.92% 89.02% || 22.38% 15.51%   (MLP early-stops on held-in 1b8d,1b0n)
+  S0.2 0.006656 0.005228 0.003771 0.004048 || 21.46% 43.35% 39.19% || 27.87% 22.57%   (padding masked)
+  S0.3 0.006656 0.005228 0.003769 0.004033 || 21.46% 43.37% 39.41% || 27.91% 22.85%   (leave-one-entry-out, 3 old proteins)
+  S0.3 all 19 proteins, mean % with 95% CI over PDB entries:
+     linear vs identity +26.73% [+25.59,+27.65]; MLP vs identity +16.01% [+11.10,+19.99];
+     identity vs mean +33.28% [+25.27,+42.45]; linear vs mean +51.45% [+46.11,+57.55]; MLP vs mean +45.48% [+41.15,+50.42]
+  S0.3 per-fold MLP/identity MSE ratio: 0.74-1.05; MLP does NOT beat identity on 1b0n_A (1.005), 1b8d_K (1.047), 1bgf_A 0.967, 1bx7_A 0.978.
+Padding decomposition of the S0.0 mean baseline (direct, from the dense cache, old val proteins, lag 1):
+  1bxy_A: 76.5% padding rows; mean-baseline MSE real 0.00537, PADDED 0.05195; padded rows = 96.9% of its mean-baseline MSE.
+  1bxy_B and 1btk_A: padded rows contribute exactly 0 (padding constant in the sampled frames).
+  => ~82% of the S0.0 pooled mean baseline (0.0132 of 0.0161) is the padding constant of ONE protein (1bxy_A), an
+     extraction artifact (run-dependent padding value mixed in the per-position mean), not protein motion.
+Attribution of the old 91.25% (MLP vs mean): S0.0 89.58 -> S0.1 89.02 (selection leak: -0.6 pts vs mean; -4.3 pts vs identity)
+  -> S0.2 39.19 (padding masked: -49.8 pts) -> S0.3 39.41 (split structure: +0.2).
+
+### Autocorrelation / effective sample size (results/phase1/acf.json)
+  lag | nominal pairs | independent windows | n_eff total | n_eff/protein median [min,max]
+  10 ps 570000 | 570057 | 596.0 | 15.8 [8.1,285.7];  100 ps 569487 | 57000 | 571.0 | 15.7 [8.1,262.9]
+  1 ns 564357 | 5700 | 432.9 | 14.9 [7.8,145.6];  10 ns 513057 | 570 | 193.7 | 9.3 [5.8,24.5];  50 ns 285057 | 114 | 41.5 | 2.2 [1.7,2.9]
+  tau_int median 947 frames (9.5 ns), range 52 (1af7_A) to 1844 (1b8d_K). Block length lag+2*tau_int ~2000 frames even at 10 ps.
+
+### v_theta analysis (checkpoint step 192325, IN-SAMPLE, 19 proteins, real tokens, 21 t values; results/phase1/vtheta_summary.json)
+  ||v||/||u||: raw 0.01261 overall, EMA 0.00160 overall; per-protein EMA 0.00118-0.00232.
+  Ratio is flat in t to 3-4 digits (EMA 0.00159-0.00162 at every t). mid(0.4-0.6)/endpoints = 0.995. No dip at t=0.5.
+  corr(v,u) EMA = 0.00036-0.00037 at every t; |v-u|/|u| = 1.000001.
+  Empirical linear E[delta|z_t] (fit on all 19 proteins, in-sample): RMS 0.00049 at t=0.5 vs 0.0332 at t=0.01 and 0.0338 at t=0.99;
+  mean slope -0.298 at t=0.01, +0.0034 at t=0.5, +0.302 at t=0.99 (antisymmetric, crosses zero at 1/2);
+  fraction of |u|^2 it explains vs the v=0 predictor: 0.144 (t=0.01), 0.0001 (t=0.5), 0.149 (t=0.99); ~0.058 averaged over the t grid.
+  OUTCOME: pre-stated (a), total collapse, not (b). The model output does not track the empirical conditional mean.
+
+### ATLAS re-fetch
+  ATLAS API unreachable since 2026-10-10 ~00:35 (api/* and database/* endpoints hang, HTTP status 000 after 40 s; home page serves);
+  fetch 11260924 gave up after 3h05m; 11263373 running. verify_atlas_refetch.py not run. Phase 1B (B1 Cartesian control, B2 random-init
+  trunk re-extraction, B3) is BLOCKED: all three need the raw trajectories. Residue/atom/frame fingerprints from the extraction logs are
+  stored (results/phase1/extraction_metadata.json) for verification if the data returns.
