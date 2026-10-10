@@ -28,6 +28,14 @@ condition triggers it is reported as a finding, not reinterpreted.
   result is conservative; a "gain over identity" result may partly be mean-reversion
   (that is exactly what Phase 1C tests).
 
+- F7. Chai-1 bucket padding. Stored latents are [N, L_bucket, 384] with L_bucket in
+  {256,384,512,768}; positions beyond the real residue count are CONSTANT (frame-std
+  exactly 0, checked on 1b25_D: positions 619-767, i.e. 19% of its tokens). The DiT's
+  training loss, its v_pred=0 baseline (0.002079) and the old probes all count these as
+  ordinary zero-error tokens, diluting absolute MSEs (ratios between predictors are only
+  approximately preserved). New pipeline: real-residue tokens only (positions with nonzero
+  frame variance), plus a stored padded-fraction so Step 0 can reproduce the old weighting.
+
 ## Phase 1A — identity-relative LOGO rescoring across lags
 
 Design: lags {1,10,100,1000,5000} frames = {10ps,100ps,1ns,10ns,50ns}. Per (protein,lag):
