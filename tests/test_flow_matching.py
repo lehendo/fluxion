@@ -100,3 +100,35 @@ class TestFlowMatcher:
         # Should not raise
         loss = matcher.compute_loss(model, z0, z1, pair, padding_mask=mask)
         assert not loss.isnan()
+
+
+class TestTDistribution:
+    """Phase 3a: the t sampler is the only thing that may differ between arms."""
+
+    def test_default_is_uniform_and_unchanged(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        t = FlowMatcher().sample_t(20000, "cpu")
+        assert abs(t.mean().item() - 0.5) < 0.01 and abs(t.var().item() - 1 / 12) < 0.005
+        assert t.min() >= 1e-5 and t.max() <= 1 - 1e-5
+
+    def test_beta_puts_mass_at_both_endpoints(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        t = FlowMatcher(t_dist="beta").sample_t(20000, "cpu")
+        assert abs(t.mean().item() - 0.5) < 0.01                       # symmetric
+        assert ((t < 0.1) | (t > 0.9)).float().mean() > 0.38            # arcsine: 0.41; uniform: 0.20
+        assert ((t > 0.4) & (t < 0.6)).float().mean() < 0.15            # arcsine: 0.128; uniform: 0.20
+        assert t.min() >= 1e-5 and t.max() <= 1 - 1e-5
+
+    def test_beta_shape_parameters_respected(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        heavy = FlowMatcher(t_dist="beta", beta_a=0.1, beta_b=0.1).sample_t(20000, "cpu")
+        assert ((heavy < 0.1) | (heavy > 0.9)).float().mean() > 0.75      # arcsine-like limit: 0.81
+
+    def test_bad_name_rejected(self):
+        import pytest
+        from training.flow_matching import FlowMatcher
+        with pytest.raises(ValueError):
+            FlowMatcher(t_dist="logit")

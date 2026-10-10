@@ -17,12 +17,24 @@ import torch.nn as nn
 
 
 class FlowMatcher:
-    def __init__(self, eps: float = 1e-5):
+    def __init__(self, eps: float = 1e-5, t_dist: str = "uniform", beta_a: float = 0.5, beta_b: float = 0.5):
         """
         Args:
             eps: Small buffer to prevent numerical instability at t=0 and t=1
+            t_dist: how t is drawn. "uniform" (default; the behaviour every earlier run used) or
+                    "beta" (t ~ Beta(beta_a, beta_b); the default 0.5/0.5 puts mass near t = 0 and t = 1).
+                    Phase 3a of the TMLR work changes ONLY this. No importance reweighting is applied:
+                    the loss is the same MSE, sampled at different t.
         """
+        if t_dist not in ("uniform", "beta"):
+            raise ValueError(f"t_dist must be 'uniform' or 'beta', got {t_dist!r}")
         self.eps = eps
+        self.t_dist = t_dist
+        self._beta = torch.distributions.Beta(torch.tensor(float(beta_a)), torch.tensor(float(beta_b))) if t_dist == "beta" else None
+
+    def sample_t(self, B: int, device) -> torch.Tensor:
+        u = torch.rand((B,), device=device) if self._beta is None else self._beta.sample((B,)).to(device)
+        return u * (1.0 - 2 * self.eps) + self.eps
 
     def compute_loss(
         self,
@@ -47,7 +59,7 @@ class FlowMatcher:
         B = z0.shape[0]
         device = z0.device
 
-        t = torch.rand((B,), device=device) * (1.0 - 2 * self.eps) + self.eps
+        t = self.sample_t(B, device)
         t_expand = t.unsqueeze(1).unsqueeze(2)
 
         z_t = (1.0 - t_expand) * z0 + t_expand * z1
