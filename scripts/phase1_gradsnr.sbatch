@@ -15,4 +15,4 @@ source ~/.bashrc
 conda activate fluxion
 cd /u/arjunc4/fluxion
 ulimit -n 65536
-python scripts/phase1_gradsnr.py
+python scripts/phase1_gradsnr.py ${SNR_ARGS}
