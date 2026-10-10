@@ -469,3 +469,14 @@ KILL CONDITION: if the uniform arm's loss does not decrease from its initial val
 before the budget is spent. No arm is re-run to improve a result; if a bug is found the fix is logged and the arm restarted from scratch.
 OPEN DECISION (asked of Arjun): treatment distribution Beta(0.5,0.5) as specified, or a heavier endpoint mixture (Beta(0.25,0.25) or Beta(0.1,0.1)). Recommendation: Beta(0.25,0.25)
 or heavier, because Beta(0.5,0.5) changes the attainable fraction only 1.46x. Not decided by me; no arm launched.
+
+=====================================================================================================================
+2026-10-11. PHASE 3a THROUGHPUT BENCHMARK (timing only; NOT an experimental arm; job 11278346 on IllinoisComputes-GPU node ccc0388, 1 GPU, uniform t, 300 steps).
+The first benchmark submission (11276952, secondary, H100-only) sat PENDING with ~800 jobs queued in that partition and was cancelled; the same pipeline was resubmitted on
+IllinoisComputes-GPU (3-day cap, --time=3-00:00:00 per the max-time rule) and started immediately.
+Result: 9.15M parameters; training set 13 proteins / 390,000 lag-1 pairs; 300 steps at batch 8 in 47 s including ~18 s of startup => ~10.5 steps/s (~9.5 s per 100 steps); no errors.
+Loss in centered coordinates ~0.0072-0.0078 (early, warmup). Sizing: 3 GPU-hours/arm = ~113,000 steps; PROPOSED 100,000 steps per arm (~2.6 GPU-h each, ~5.3 GPU-h for both arms, well under the 12 GPU-hour
+cap), identical for both arms. 100,000 steps x batch 8 = 800k samples ~ 2 passes over the training pairs (the original run used 192k steps x 16 = 3.1M samples). Headroom exists to go to ~200k steps per arm
+within the cap if Arjun prefers a longer run. Batch size is part of the shared optimizer settings (8); a larger batch would raise per-step gradient SNR (k* = 25.8 microbatches of 4 samples at the old checkpoint)
+and is a legitimate knob to decide together with the t-distribution, identical across arms.
+NO ARM HAS BEEN LAUNCHED. Waiting on the open decision (treatment t-distribution; step count and batch size).
