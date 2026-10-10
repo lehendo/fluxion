@@ -439,3 +439,33 @@ B1 fig: results/phase1/figs/fig4_b1_paired.png.
 now has a 'Current state' section on top (retitled framing, what died/survived, correction chain) and in-place correction annotations on its two OT-CFM passages;
 original text and earlier correction blocks are kept. Project memory updated. OT-coupling correction is now propagated to: theory.md, README.md, docs/novelty_assessment.md,
 the log, the summary doc, memory.
+
+=====================================================================================================================
+2026-10-11. PHASE 3a PRE-REGISTRATION (written BEFORE any 3a arm is trained). Status: pipeline built and CPU-smoke-tested; the treatment arm's t distribution is PENDING
+Arjun's decision (see 'OPEN DECISION'); nothing below has been run on the cluster except the per-position centering statistics (job 11275974).
+PURPOSE. Not 'fix the model': test whether attenuation under uniform-t sampling is the mechanism behind the trained DiT's collapse to identity.
+THE ONE CONTROLLED CHANGE: t ~ Uniform(0,1) vs t drawn toward the endpoints. Everything else identical across the two arms: architecture (FluxionDiT d_model 256, 6 layers,
+8 heads, d_ff 1024, ~9M params), data, split, seed, optimizer (AdamW lr 1e-4, gate lr x10, warmup 2000, clip 1, EMA 0.999), batch size 8, step count, loss (plain MSE, no importance
+weights). Two arms = the full two-configuration budget; 3b (conditional p(z1|z0)) therefore goes to FUTURE_WORK.md unless the limit is lifted. Budget: <=12 GPU-hours total, one H100 per arm.
+CHANGES VS THE ORIGINAL 72 h RUN, shared by both arms and stated so nobody mistakes 3a for a re-run of it: (1) latents CENTERED by the protein's own per-position mean (the paper's
+measurement coordinates; transductive for held-out proteins exactly like the probes, F6); (2) loss and attention masked by the REAL-residue mask (the original mask covered only positions
+beyond the bucket, so padding counted as zero-error tokens); (3) HELD-OUT PDB entries (the original was in-sample); (4) ~9M params vs 40M; (5) 1b25_D (768 bucket) excluded.
+SPLIT (deterministic, seed 0, by entry): TRAIN 13 proteins/12 entries = 1a62_A 1ab1_A 1af7_A 1ah7_A 1ail_A 1b0n_A 1b2s_E 1b2s_F 1b8d_K 1bgf_A 1bkp_A 1btk_A 1bx7_A;
+HELD-OUT 5 proteins/4 entries = 16pk_A 1aol_A 1bq8_A 1bxy_A 1bxy_B. The held-out CI is over only 4 entries and is reported as coarse; per-protein values are shown.
+EVALUATION (scripts/phase3_eval.py): lag 1 (10 ps), real tokens, 400 sampled valid starts per protein (fixed seed, identical for every method), % improvement over identity of:
+shrinkage alpha*z0 and per-channel linear (both fitted on the TRAINING entries only), and the trained model's z1_hat = Euler integral of v from z0 with 1 step and with 8 steps (EMA and raw weights).
+The 1-step prediction z0 + v(z0, 0) is the direct forecast and the matched comparison to the 15% per-channel-linear figure. In-sample (training proteins) columns are reported and labelled.
+CLOSED-FORM PREDICTION OF WHAT THE ATTENUATION ACCOUNT SAYS (rho_eff = 0.695, analysis/theory.py; E_w[f] = attainable loss reduction under sampling density w):
+  uniform 5.42%; Beta(0.5,0.5) 7.93% (1.46x); Beta(0.25,0.25) 10.23% (1.89x); Beta(0.1,0.1) 12.02% (2.2x); f(0) = 15.25%. Mass in t<0.1 or >0.9: 0.20 / 0.41 / 0.62 / 0.81.
+  Reading: Beta(0.5,0.5) is a MILD change of the training signal. With the measured k* = 25.8 at the old batch, a 1.46x signal gain moves k* to about 12, still 'ambiguous' by the
+  pre-stated thresholds, so a null at Beta(0.5,0.5) would be only weakly informative about the attenuation account.
+SUCCESS CRITERION (stated before running; for the pre-specified treatment arm T):
+  PASS (attenuation account supported): held-out 1-step improvement over identity of arm T >= (shrinkage improvement on the same held-out frames) - 5 points, AND uniform arm <= 3%.
+  Matching shrinkage is a pass; exceeding it is not expected and would be noted, not claimed. Compared against BOTH identity and shrinkage.
+  PARTIAL: arm T between 3% and (shrinkage - 5) points: the account explains some but not all.
+  FAIL / account incomplete: arm T <= 3% (no recovery): attenuation does not suffice; points toward the gradient-SNR / optimization explanation.
+  SURPRISE: uniform arm also recovers (> 3%): attenuation is not the binding mechanism for a small centered/masked model; reported as such.
+KILL CONDITION: if the uniform arm's loss does not decrease from its initial value within the first 2000 steps (training broken, not 'no signal'), stop and debug; this is checked from loss_log.csv
+before the budget is spent. No arm is re-run to improve a result; if a bug is found the fix is logged and the arm restarted from scratch.
+OPEN DECISION (asked of Arjun): treatment distribution Beta(0.5,0.5) as specified, or a heavier endpoint mixture (Beta(0.25,0.25) or Beta(0.1,0.1)). Recommendation: Beta(0.25,0.25)
+or heavier, because Beta(0.5,0.5) changes the attainable fraction only 1.46x. Not decided by me; no arm launched.
