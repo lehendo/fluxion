@@ -5,7 +5,7 @@ zero. **That is refuted and has been removed.** What the data confirm is the ant
 t = 1/2 and a severe, quantifiable attenuation of the learnable signal. Section 5 holds the numerical verification, Section 6 a scoping
 remark on OT re-coupling, and Section 7 the prior-art search (still being filled in; see its status line).
 
-Wording rule used throughout: the objective *offers almost little learnable signal*; we never say the model "found
+Wording rule used throughout: the objective *offers almost no learnable signal*; we never say the model "found
 the optimum". The trained model did not reach the (nonzero) optimum either.
 
 ## 1. Setup and assumptions
