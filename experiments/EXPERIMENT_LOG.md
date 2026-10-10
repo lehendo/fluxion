@@ -323,3 +323,26 @@ the per-position mean), with no direction-specific structure the 384x384 map can
 cross-residue coupling was tested. 'Dynamics' must not be claimed on the strength of the probe gains.
 The in-sample DiT is indistinguishable from identity at every lag: it learned a velocity field whose Euler integral does nothing to z0.
 GRADIENT SNR (11271943) still running (1024/4096 microbatches at last look); result pending.
+
+=====================================================================================================================
+2026-10-10 (later still). B1 RESULT (job 11273095; scripts/phase1b_cartesian.py, scripts/phase1b_report.py; results/phase1/b1/).
+Verified proteins only: 1ab1_A 1ah7_A 1aol_A 1b2s_F 1bq8_A 1btk_A 1bxy_A 1bxy_B = 7 PDB entries (1bxy_A/B averaged to one value).
+Frames at 100 ps stride, 1001/replica, leave-one-replica-out, both representations PCA-reduced to k = min(3 n_res, 384) (PCA fit on training replicas only).
+Paired difference = Chai-1 % over identity MINUS Cartesian % over identity; 95% percentile-bootstrap CI over the 7 entries; no best-of selection (all predictors shown).
+  linear_diag   100 ps +3.69 [-1.94,+10.89]   1 ns -0.41 [-4.52,+4.36]   10 ns -3.35 [-7.61,+2.34]   (50 ns -2.87 [-8.02,+5.12], uninterpretable)
+  shrink        100 ps -2.79 [-6.62,+1.04]    1 ns -4.32 [-8.73,+0.17]   10 ns -5.43 [-10.25,-0.05]  (Cartesian better, CI < 0)
+  linear_full   +13.04 [-0.51,+28.59] / +10.98 [-3.37,+29.13] / +9.37 [-7.37,+32.34]; MLP +12.04 / -7.74 / -10.04 (all CIs include 0)
+  id/mean ratio (Chai - Cart)  100 ps -0.03 [-0.17,+0.08]   1 ns -0.09 [-0.24,+0.03]   10 ns -0.14 [-0.28,-0.02]
+  entries with Chai > Cartesian: between 1/7 and 4/7 for every cell; exact one-sided sign-flip p >= 0.117 everywhere for 'Chai better'.
+  Absolute levels, linear_diag % over identity: Chai 9.4 / 11.1 / 15.8 vs Cartesian 5.7 / 11.5 / 19.2 at 100 ps / 1 ns / 10 ns.
+KILL CONDITION (restated before launch) MET: no CI of the paired difference lies above 0 at any lag <= 10 ns for any predictor; for several
+cells (10 ns shrink, 10 ns id/mean) it lies below 0. Under the pre-registered rule the premise 'frozen trunk latents encode dynamics beyond
+coordinates' is NOT supported by this control, and the finding moves from appendix to headline-level.
+Caveats, all of which weaken what 'not supported' can mean: (a) only 7 entries / 8 proteins passed verification (11 unverified, see above), so
+CIs are wide and the test has little power to detect a modest Chai-1 advantage; absence of a CI above 0 is not evidence of equality;
+(b) only lags >= 100 ps are reachable (coordinates are every 100 ps); the lag-1 regime where the DiT was trained is untested here;
+(c) per-protein training sets are ~2000 pairs, so the 384x384 full linear map and the MLP overfit in BOTH representations (negative % over identity
+in the table); linear_diag and shrink are the trustworthy rows, and neither shows a Chai-1 advantage; (d) Chai-1 latents are themselves computed
+from the coordinates (template/restraint features), so a Cartesian representation matching them is the expected null, not a surprise;
+(e) 6 predictors x 4 lags are shown, two CIs excluding 0 (both favouring Cartesian) are not multiplicity-corrected.
+B2 (random-init trunk) not started. GRADIENT SNR (11271943) still running at last look.
