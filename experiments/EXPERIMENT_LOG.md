@@ -346,3 +346,18 @@ in the table); linear_diag and shrink are the trustworthy rows, and neither show
 from the coordinates (template/restraint features), so a Cartesian representation matching them is the expected null, not a surprise;
 (e) 6 predictors x 4 lags are shown, two CIs excluding 0 (both favouring Cartesian) are not multiplicity-corrected.
 B2 (random-init trunk) not started. GRADIENT SNR (11271943) still running at last look.
+
+=====================================================================================================================
+2026-10-10 (evening). GRADIENT SNR RESULT (E3; job 11271943, 81 min; results/phase1/gradsnr.json, gradsnr_stdout.txt).
+Final checkpoint (step 192,325, raw weights, 39.86M params), 4096 microbatches of 4 samples, training loss, random t.
+  ||E g|| = 1.233e-4;  per-microbatch std sqrt(tr Cov) = 6.260e-4;  k* = tr Cov/||E g||^2 = 25.8 microbatches (= effective batch ~103 samples)
+  jackknife over 8 chunks: k* in [24.4, 26.4];  gate/adaLN group k* = 25.8.
+  SNR(k) for k = 1, 4, 16, 64, 256 microbatches: 0.197, 0.394, 0.788, 1.576, 3.152.   Real training used k = 4 (effective batch 16): SNR = 0.39.
+  Validation: empirical mean ||avg of k grads||^2 matches ||Eg||^2 + trCov/k within 4% at every k (k=64: 2.05e-8 vs 2.13e-8).
+  Per-coordinate SNR > 1 at k = 1, 4, 16, 64, 256: 0.12%, 1.6%, 10.9%, 28.5%, 48.0% of coordinates.
+PRE-STATED INTERPRETATION APPLIES: 4 < k* <= 64 => AMBIGUOUS. This result neither establishes that the signal is below the gradient noise floor at
+feasible batch sizes (that needed k* > 64) nor that the failure is optimization/architecture (k* <= 4). What it does show: at the batch actually used,
+the mean gradient is ~2.5x smaller than the per-step noise (SNR 0.39), and about 6.5x more samples per step (batch ~103) would be needed for SNR = 1;
+whether Adam's momentum/averaging over ~192k steps compensates is NOT tested here. ||E g|| is nonzero (SNR is well-measured, jackknife SE small),
+so the checkpoint is not at a stationary point of the training loss.
+Not claimed: that the trained DiT 'could' learn the attenuated signal with a larger batch. The in-sample DiT equals identity at every lag (sweep result above).
