@@ -184,3 +184,47 @@ Attribution of the old 91.25% (MLP vs mean): S0.0 89.58 -> S0.1 89.02 (selection
   fetch 11260924 gave up after 3h05m; 11263373 running. verify_atlas_refetch.py not run. Phase 1B (B1 Cartesian control, B2 random-init
   trunk re-extraction, B3) is BLOCKED: all three need the raw trajectories. Residue/atom/frame fingerprints from the extraction logs are
   stored (results/phase1/extraction_metadata.json) for verification if the data returns.
+
+## Correction to the brief's Correction 1, recorded 2026-10-10 (at Arjun's request)
+
+The brief's reconstruction of the old numbers was wrong in BOTH directions, not just one:
+  - identity beats the predict-the-mean baseline by ~21% (masked, original 3 proteins: id/mean 21.46%), NOT 89%;
+  - the probes beat identity by ~27% (linear 27.9% on the original 3; 26.7% [25.6,27.7] across 19 under
+    leave-one-entry-out), NOT ~21%.
+The structural point survives: improvement-over-mean is the wrong metric. The numbers that motivated it do not.
+Both of its inputs were padding artifacts: the old mean baseline (0.01944) was ~82% the padding constant of a
+single protein (1bxy_A), and the DiT's identity baseline (0.002079) was padding-diluted.
+
+## Decisions 2026-10-10 and pre-registration for the next experiments (before any of them runs)
+
+LAG RANGE. Analysis range 10 ps - 10 ns. 50 ns is computed but rendered greyed and labelled n_eff ~ 2/protein, not
+interpretable (beyond tau_int, median 9.5 ns, one is no longer measuring dynamics). Cross-protein claims are
+bootstrapped over the 17 PDB-entry folds, not rows.
+
+E1 HEADLINE (C1): fraction of ||u||^2 explained, on identical masked rows and identical S0.3 folds, for
+  (a) direct regression z0 -> z1 (per-channel linear), and (b) the optimal per-channel linear E[delta|z_t] at each of 21 t
+  values (fit on 16 entries, scored on the held-out entry), uniform-t average marked; ratio (a)/(b) with CI over entries.
+  No kill condition (measurement). Mechanism to be stated in the caption: t is sampled uniformly, the recoverable signal is
+  odd about t=1/2 and vanishes there, so most draws land where there is little to learn. Wording rule: "the objective offers
+  almost no learnable signal", never "the model found the optimum".
+E2 THEORY: theory.md revised: v=0 is NOT the exact minimizer; the optimal field is nonzero, odd about t=1/2, zero at the midpoint;
+  degeneracy = severe attenuation (here ~6% of the loss vs ~27% for direct regression), not exact nullity.
+E3 GRADIENT SNR at the final checkpoint (raw weights, bf16 autocast as in training): per-microbatch (4 samples) gradient g of the
+  training loss, unbiased estimates of ||E[g]||^2 and tr(Cov g) from M microbatches via S=sum g and sum||g||^2; SNR(k) =
+  ||E g|| / sqrt(tr Cov / k) for k = 1,4,16,64,256 (k=4 microbatches = the effective batch 16 actually used), plus empirical group
+  averages for validation; crossover k* = tr Cov / ||E g||^2.
+  PRE-STATED INTERPRETATION: k* > 64 (>=16x the batch used) => the signal sits below the gradient noise floor at feasible batch sizes
+  (a quantitative mechanism for "learned nothing"); k* <= 4 => the failure is optimization/architecture and is reported as such;
+  4 < k* <= 64 => ambiguous, reported as ambiguous. Also reported for the gate/adaLN group and per-coordinate (Adam-relevant).
+E4 ASYMPTOTE CHECK (lag sweep): at lags >> tau_int, z0 and z1 decorrelate: E||z1-z0||^2 -> 2 sigma^2, E||z1-mu||^2 -> sigma^2, so
+  identity/mean -> 2, probe-vs-identity -> 50%, probe-vs-mean -> 0. With per-channel rho_c, direct linear regression predicts
+  improvement-over-identity = (1 - rho_eff)/2 and improvement-over-mean = rho_eff'^2-type decay, both -> (50%, 0) as rho -> 0.
+  If the curves do not bend toward these asymptotes as lag approaches and exceeds tau_int, the pipeline is wrong and writing stops.
+  Both baselines are reported across the whole sweep, with where each dominates (identity right at short lags, wrong at long).
+E5 PHASE 1C on the probes (brief's kill conditions apply): C1 contraction ratio ||zhat1-mu||/||z1-mu||; C2 eigenvalue spectrum of A in
+  zhat1 = A z0 + b; C3 one-parameter shrinkage alpha*z0 (+(1-alpha)mu; mu=0 in centered coordinates), alpha by least squares; C4 cosine of
+  predicted vs true displacement. KILL: if full linear does not beat shrinkage by more than the CI, or cosine ~0 while MSE improves, the
+  gain is mean reversion with no directional information and "dynamics" must not appear near it.
+ATLAS SALVAGE: check mirrors (Zenodo / institutional / bulk archive); check whether pairwise C-alpha RMSD matrices from the original Mantel
+  validation were logged (a distance-matrix-level B1 would then be possible); keep the patient retry running; do not block on it.
+PHASE 1 REPORTING: Phase 1 = 1A + 1C, with 1B explicitly marked BLOCKED and PENDING.
