@@ -286,3 +286,39 @@ class TestKabschRMSD:
         assert D[0, 1] < 1e-6
         assert 0.7 < D[0, 2] < 0.95
         assert np.allclose(D, D.T, atol=1e-6)
+
+
+class TestKabschAlign:
+    def test_alignment_recovers_a_rotated_translated_copy_and_never_reflects(self):
+        from analysis.geometry import kabsch_align
+        rng = np.random.default_rng(1)
+        ref = rng.standard_normal((50, 3)) * 4
+        th = 1.1; R = np.array([[1, 0, 0], [0, np.cos(th), -np.sin(th)], [0, np.sin(th), np.cos(th)]])
+        moved = ref @ R.T + np.array([5.0, 1.0, -3.0])
+        out = kabsch_align(moved[None], ref)[0]
+        assert np.abs(out - ref).max() < 1e-6
+        mirror = ref * np.array([1, 1, -1])                          # a reflection must NOT be undone by a proper rotation
+        assert np.abs(kabsch_align(mirror[None], ref)[0] - ref).max() > 1e-2
+
+
+class TestPCAScores:
+    def test_scores_have_the_training_eigenvalue_variances_and_are_orthogonal(self):
+        from analysis.geometry import pca_scores
+        g = torch.Generator().manual_seed(0)
+        n, D, r = 300, 500, 5
+        W = torch.randn(r, D, generator=g); scale = torch.tensor([5., 4., 3., 2., 1.]).unsqueeze(1)
+        X = torch.randn(n, r, generator=g) @ (W * scale) + 0.01 * torch.randn(n, D, generator=g)
+        S = pca_scores(X, X, k=5)
+        var = S.var(0, unbiased=True)
+        ref = torch.linalg.svdvals(X - X.mean(0)) ** 2 / (n - 1)
+        assert torch.allclose(var, ref[:5], rtol=1e-3)
+        C = (S - S.mean(0)).T @ (S - S.mean(0)) / (n - 1)
+        assert (C - torch.diag(torch.diag(C))).abs().max() < 1e-2 * var.max()
+
+    def test_heldout_projection_uses_only_training_axes(self):
+        from analysis.geometry import pca_scores
+        g = torch.Generator().manual_seed(1)
+        Xtr = torch.randn(200, 30, generator=g) @ torch.diag(torch.linspace(3, 0.1, 30))
+        Xte = torch.randn(50, 30, generator=g) @ torch.diag(torch.linspace(3, 0.1, 30))
+        S_all = pca_scores(Xtr, torch.cat([Xtr, Xte]), k=10)
+        assert torch.allclose(S_all[:200], pca_scores(Xtr, Xtr, k=10), atol=1e-4)
