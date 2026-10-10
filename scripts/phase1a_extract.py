@@ -85,6 +85,9 @@ def main() -> None:
     ap.add_argument("--frames-per-lag", type=int, default=600)
     ap.add_argument("--rows-per-frame", type=int, default=48)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--all-positions", action="store_true",
+                    help="sample rows uniformly over ALL L positions (incl. bucket padding), flagging is_pad; "
+                         "reproduces the old probes' pooling for the Step 0 ladder")
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--sequences-json", type=Path,
@@ -142,14 +145,16 @@ def main() -> None:
         cols = {k: [] for k in ("z0", "z1", "zprev", "pos", "frame", "replica")}
         dit_err = {f"{n}_n{s}": [] for n in (models or {}) for s in args.dit_steps}
         cursor = 0
-        P = min(args.rows_per_frame, n_real)
+        pool_n = L if args.all_positions else n_real
+        pool_idx = torch.arange(L) if args.all_positions else real_idx
+        P = min(args.rows_per_frame, pool_n)
         for zs, fidx in loader:                              # zs [B, 2|3, L, d]
             B = zs.shape[0]
             z0, z1 = zs[:, -2], zs[:, -1]
             sum_pos += z0.double().sum(0) + z1.double().sum(0)
             cnt += 2 * B
             # rows: P random REAL positions per frame
-            sel = real_idx[torch.rand(B, n_real, generator=g).argsort(1)[:, :P]]   # [B, P]
+            sel = pool_idx[torch.rand(B, pool_n, generator=g).argsort(1)[:, :P]]   # [B, P]
             gather = lambda t: torch.gather(t, 1, sel.unsqueeze(-1).expand(-1, -1, d))
             cols["z0"].append(gather(z0).reshape(-1, d))
             cols["z1"].append(gather(z1).reshape(-1, d))
@@ -175,9 +180,10 @@ def main() -> None:
         cell = {
             "protein": args.protein, "lag": lag, "L_bucket": L, "n_real": n_real,
             "n_frames": len(flat), "rows_per_frame": P,
+            "all_positions": bool(args.all_positions),
             "z0": torch.cat(cols["z0"]), "z1": torch.cat(cols["z1"]),
             "zprev": torch.cat(cols["zprev"]) if cols["zprev"] else None,
-            "pos": torch.cat(cols["pos"]), "frame": torch.cat(cols["frame"]),
+            "pos": torch.cat(cols["pos"]), "is_pad": ~real[torch.cat(cols["pos"]).long()], "frame": torch.cat(cols["frame"]),
             "replica": torch.cat(cols["replica"]),
             "dit_sqerr": {k: torch.cat(v) for k, v in dit_err.items()} or None,
             "dit_ckpt_step": ckpt_step,

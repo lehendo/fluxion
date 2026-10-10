@@ -1,5 +1,6 @@
 #!/bin/bash
-# Dense lag-1 cache for the Step 0 ladder: 3000 starts x 48 rows ~ 144k rows/protein (old probe: ~150k).
+# Dense lag-1 cache for the Step 0 ladder: 3000 starts x 50 rows UNIFORM OVER ALL POSITIONS (incl. bucket
+# padding, flagged is_pad) = 150k rows/protein, matching the old probe's pooling.
 # CPU only (no DiT). One array task per protein.
 #SBATCH --job-name=p1a_dense
 #SBATCH --partition=secondary
@@ -21,5 +22,5 @@ PROTEINS=(16pk_A 1a62_A 1ab1_A 1af7_A 1ah7_A 1ail_A 1aol_A 1b0n_A 1b25_D 1b2s_E 
 P=${PROTEINS[$SLURM_ARRAY_TASK_ID]}
 python scripts/phase1a_extract.py \
     --latents-dir /scratch/arjunc4/fluxion_data/latents \
-    --protein "$P" --out-dir /scratch/arjunc4/fluxion_data/phase1_cache_s0 \
-    --lags 1 --frames-per-lag 3000 --rows-per-frame 48 --num-workers 8 --device cpu
+    --protein "$P" --out-dir /scratch/arjunc4/fluxion_data/phase1_cache_s0all \
+    --lags 1 --frames-per-lag 3000 --rows-per-frame 50 --all-positions --num-workers 8 --device cpu
