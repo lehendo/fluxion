@@ -408,3 +408,28 @@ less information. B1 tests learnability only. The claim is: 'frozen Chai-1 trunk
 linear or MLP probes at lags >= 100 ps.' Matching Cartesian is the expected null; this is a failure to find an advantage, not a surprise. The interesting counterfactual
 (an advantage at 10 ps, where the DiT trained) is unreachable with 100 ps analysis frames. Comparison rests on the identity-relative and shrinkage-relative rows;
 the full-linear and MLP rows overfit at ~2000 pairs per protein in both representations and are not used for the claim.
+
+=====================================================================================================================
+2026-10-11. B1 RESULT ON THE REVISED SET, side by side with the 8-protein set (job 11275535 for the 5 new proteins; results/phase1/b1/b1_report.{txt,json}).
+Paired difference, Chai-1 minus Cartesian PCA, % over identity, 95% bootstrap CI over PDB entries.
+                          8 proteins / 7 entries                                   13 proteins / 11 entries
+  shrink       100 ps  -2.79 [-6.62,+1.04]   1 ns -4.32 [-8.73,+0.17]   10 ns -5.43 [-10.25,-0.05]      +0.56 [-2.85,+3.89]   -0.17 [-4.28,+4.06]   -0.53 [-5.50,+5.01]
+  linear_diag  100 ps  +3.69 [-1.94,+10.89]  1 ns -0.41 [-4.52,+4.36]   10 ns -3.35 [-7.61,+2.34]       +7.10 [+2.10,+12.47]* +4.35 [-0.32,+9.34]   +4.60 [-2.33,+12.90]
+  id/mean ratio 100 ps -0.03 [-0.17,+0.08]   1 ns -0.09 [-0.24,+0.03]  10 ns -0.14 [-0.28,-0.02]       +0.06 [-0.06,+0.16]   +0.02 [-0.12,+0.14]   -0.01 [-0.15,+0.14]
+  (full linear and MLP rows are in b1_report.txt; they overfit in both spaces and are not used.  * = CI above 0.)
+Absolute levels, 13 proteins, 100 ps / 1 ns / 10 ns, % over identity:  shrink Chai 10.9/14.7/21.5 vs Cart 10.4/14.9/22.1;  linear_diag Chai 4.6/5.5/11.2 vs Cart -2.5/1.1/6.6.
+READING (stated plainly, including what does not fit the earlier B1 entry):
+ (1) The earlier entry's wording 'no CI above 0 at any lag for any predictor' was true for the 8-protein set and is NOT true for the 13-protein set: per-channel linear shows
+     Chai-1 ahead by +7.10 [+2.10,+12.47] at 100 ps (1 of 3 lags, 1 of the 2 trusted rows; at 1 ns the CI is [-0.32,+9.34]).
+ (2) The only row where the representations are compared at the BEST probe in each space is one-parameter shrinkage (it beats per-channel linear, full linear and the MLP in BOTH spaces at every
+     lag). There the difference is within +/-0.6 points of 0 at every lag (13 set) with CIs of about +/-4 points: indistinguishable, with limited power to see a modest difference.
+ (3) The linear_diag lead is a comparison of an over-parameterised probe that both representations' own shrinkage baseline beats (Chai 4.6% vs its shrinkage 10.9%; Cartesian -2.5% vs its
+     shrinkage 10.4%): per-component slopes fit on ~2000 pairs over up to 384 PCA components. The Cartesian PCA components are noisier to fit, so this is most simply an estimation-noise difference
+     between probes that should not be used, not a representation advantage. This is an interpretation I have not tested (e.g. by ridge/cross-validated per-channel fits).
+ (4) Multiplicity: 2 trusted rows x 3 lags = 6 cells per set, one CI excluding 0 (favouring Chai-1) on the 13 set; the 8-set had two excluding 0 favouring Cartesian (10 ns shrink, 10 ns id/mean). Neither is corrected.
+KILL CONDITION as restated on 2026-10-11 ('a Chai-1 advantage requires the CI of the paired difference (linear_diag, shrinkage rows) to lie above 0 at lags <= 10 ns'): NOT met for an advantage
+(shrinkage: no lag; linear_diag: 1 of 3 lags, and only on the larger set). The 'no advantage' statement therefore stands only in this form:
+  'On the shrinkage-referenced comparison, frozen Chai-1 trunk latents and matched-dimension aligned-C-alpha PCA are indistinguishable for lags >= 100 ps (paired differences within about +/-0.6 points, CIs about +/-4);
+   a per-channel-linear lead for Chai-1 at 100 ps on the 13-protein set (+7.1 [+2.1,+12.5]) concerns a probe both spaces' shrinkage baseline beats.'
+This is a learnability statement, not an information statement, and the earlier phrase 'offer no learnability advantage for linear or MLP probes' is withdrawn as too broad.
+B1 fig: results/phase1/figs/fig4_b1_paired.png.

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Figures for Phase 1, drawn from the committed JSON in results/phase1/ (no cluster access needed).
   fig2  lag sweep: % over identity, % over mean, and id/mean error ratio vs lag (50 ns greyed: n_eff ~ 2/protein)
+  fig4  B1: paired Chai-1 minus Cartesian-PCA difference (% over identity), both protein sets
   fig3  Phase 1C: contraction alpha(lag) and full-linear-minus-shrinkage with CI
   fig1  attenuation: fraction of ||u||^2 explained by the optimal linear E[delta|z_t] vs t (held-out entries),
         closed-form Gaussian prediction, direct-regression references, uniform-t average.
@@ -96,5 +97,19 @@ def fig3():
     fig.tight_layout(); fig.savefig(OUT / "fig3_phase1c.png", dpi=200); fig.savefig(OUT / "fig3_phase1c.pdf"); print("wrote fig3")
 
 
+def fig4():
+    B = json.loads((R / "b1" / "b1_report.json").read_text())
+    lags = ["100ps", "1ns", "10ns"]; xs = np.arange(len(lags))
+    fig, axs = plt.subplots(1, 2, figsize=(10.4, 4.0), sharey=True)
+    for ax, pred, title in ((axs[0], "shrink", "one-parameter shrinkage α·z0 (best probe in BOTH spaces)"), (axs[1], "linear_diag", "per-channel linear (beaten by shrinkage in both spaces)")):
+        for off, (setname, c, lab) in zip((-0.08, 0.08), (("original8", GREY, "8 proteins / 7 entries (pre-registered iii)"), ("revised13", BLUE, "13 proteins / 11 entries (revised iii')"))):
+            d = [B[setname][lag][pred]["diff"] for lag in lags]
+            ax.errorbar(xs + off, [x[0] for x in d], yerr=[[x[0] - x[1] for x in d], [x[2] - x[0] for x in d]], fmt="o", color=c, capsize=3, label=lab)
+        ax.axhline(0, color="black", lw=0.8); ax.set_xticks(xs); ax.set_xticklabels(["100 ps", "1 ns", "10 ns"]); ax.set_title(title, loc="left", fontsize=9.5)
+        for sp in ("top", "right"): ax.spines[sp].set_visible(False)
+    axs[0].set_ylabel("Chai-1 minus Cartesian PCA\n(% improvement over identity; >0 = Chai-1 better)"); axs[0].legend(fontsize=7.5, frameon=False, loc="upper left")
+    fig.tight_layout(); fig.savefig(OUT / "fig4_b1_paired.png", dpi=200); fig.savefig(OUT / "fig4_b1_paired.pdf"); print("wrote fig4")
+
+
 if __name__ == "__main__":
-    fig1(); fig2(); fig3()
+    fig1(); fig2(); fig3(); fig4()
