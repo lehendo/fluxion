@@ -48,6 +48,36 @@ ATLAS download page, API docs and OpenAPI spec were fetched; see EXPERIMENT_LOG.
 5. The closest prior setting is DeepJump (CFM between conformations a fixed step apart); the conditional reformulation (C4) is close to
    stochastic-interpolant forecasting (Chen et al.). Both must be cited and positioned against, not claimed past.
 
+
+## D. Round 2 (2026-10-10, night): loss- and t-weighting literature, and the Midpoint appendices
+
+Prompted by the review: the general principle "uniform sampling of the noise level wastes capacity because the recoverable signal varies with t"
+most likely exists in the diffusion/flow loss-weighting literature. It does. Same caveats: tool summaries, not raw text.
+
+| # | Tool | Query / URL | Outcome |
+|---|---|---|---|
+| 20 | search | `Elucidating the Design Space of Diffusion-Based Generative Models loss weighting noise level distribution Karras 2022` | EDM (arXiv:2206.00364): per-noise-level loss after training shows meaningful improvement mainly at intermediate noise; very low noise is hard to detect and matters little; at high noise the target is near the dataset mean. Training sigma sampled log-normal to focus on that range. **The general principle is established here.** Excerpts only, formulas not read. |
+| 21 | search | `Efficient Diffusion Training via Min-SNR Weighting Strategy` | Hang et al., ICCV 2023 (arXiv:2303.09556): per-timestep weights clamped by SNR to resolve conflicts between timesteps. Weighting, not a statement about attainable reduction. |
+| 22 | search | `Perception Prioritized Training of Diffusion Models P2 weighting` | Choi et al., CVPR 2022 (arXiv:2204.00227): lambda_t/(k+SNR)^gamma, emphasises perceptually relevant noise levels. A perceptual argument, not attainable-loss. |
+| 23 | search | `importance sampling of timestep t flow matching non-uniform t schedule conditional flow matching training efficiency` | SD3/Movie Gen logit-normal t; Curriculum Sampling (arXiv:2603.12517); RayFlow time sampler 'approximates the optimal sampling timestep distribution to minimize variance'; EMGFlow notes importance correction p_uni/q is needed for an unbiased objective. |
+| 24 | search | `timestep weighting flow matching loss attainable reduction signal-to-noise per time step debiased SNR-aware flow matching objective` | No hit for 'attainable reduction' or 'debiased'. Surfaced arXiv:2603.06454 (weighting/parameterization study) and 2506.13763. |
+| 25 | search | `Beta distribution timestep sampling flow matching endpoints t near 0 and 1 vs uniform` | Mixed, task-dependent evidence; no controlled Beta-vs-uniform study on a common benchmark. **Relevant to Phase 3a design: endpoint-heavy sampling is a known, used choice (Beta(1,2) in a weight-space flow model, Beta in robot policies).** |
+| 26 | fetch | arxiv.org/abs/2506.13763 + html v2 (chars 0-100k of 233k; appendices unread) | **Closest prior art found.** 'Diagnosing and Improving Diffusion Models by Estimating the Optimal Loss Value': optimal loss J*_sigma = E||x0||^2 - E||E[x0|x_t]||^2 as a function of noise level (Theorem 1, same decomposition as our Prop 1), estimators for it, and a schedule whose noise sampling is p(sigma) proportional to w_sigma (J_sigma(theta) - J*_sigma), i.e. allocate training by gap to the optimum; FM treated as a special case. Independent-noise forward process only; paired/coupled endpoints and equal marginals not discussed; no Gaussian closed form in the visible text. |
+| 27 | fetch | arxiv.org/html/2603.06454v1 | 'Training Flow Matching: The Role of Weighting and Parameterization': numerical study; heteroscedastic-regression argument for inverse-covariance weighting; Gaussian posterior closed form for the OPTIMAL WEIGHTING, not per-t optimal loss. Equal-marginal case not analysed. |
+| 28 | fetch | arxiv.org/html/2603.12517v1 | Curriculum Sampling (Sun, preprint): empirical U-shaped per-t loss; middle-biased sampling converges faster but ends worse than uniform; no theory, no equal-marginal case. Cites Lee et al. 2024: for 1-rectified flow endpoints may be uninformative. |
+| 29 | fetch | arxiv.org/html/2406.12839v4 (chars 0-100k of 188k) | Wang, He, Tao: qualitative argument for bell-shaped total weighting (agrees with EDM); does not quantify achievable loss reduction vs noise. |
+| 30 | fetch | arxiv.org/html/2605.29920v2 (Midpoint Generative Models), chars 0-100k, targeted at appendices | **Appendices A-C WERE inside this window and are now read (via tool summary).** Sec 3.1: field vanishes at midpoint when endpoints match; Sec 3.2: for t != 1/2 it 'generally does not vanish even when p0 = p1' (consistent with our corrected position); App A.1: exchange symmetry argument for the midpoint; independence assumed throughout (exchangeability only as a consequence); no Gaussian closed form; no quantification of learnable loss under uniform t; no treatment of dependent couplings. The earlier note that the appendices were unread is retired; the last 25k chars (NeurIPS checklist) were seen in query 11 and contain no technical content. |
+
+### D.1 What this does to the attenuation claim
+1. **The general principle is not ours.** Allocating training across noise levels according to how much loss reduction is attainable at each level is established
+   (EDM; most explicitly arXiv:2506.13763, whose p(sigma) proportional to w (J - J*) is the same idea with J* the optimal loss). Our f(t) = 1 - J*(t)/E||delta||^2 is the
+   same decomposition. We do not claim it.
+2. **What remains specific to this work (not found in the pages read):** (a) the setting: CFM between the two ends of an observed stationary reversible pair rather than data vs independent noise;
+   (b) the consequence that the recoverable signal is odd about t = 1/2 and therefore vanishes at the midpoint, not merely varies (Midpoint Generative Models proves the midpoint vanishing
+   for i.i.d. endpoints and notes non-vanishing elsewhere; we extend to exchangeable pairs); (c) the Gaussian reversible closed form f(t) and the 1/R in [2.33, 3.0] bound;
+   (d) the measured 2.76x on matched inputs. Wording for the paper: 'a specific instance of known loss-allocation principles, with a closed form and a measurement', never 'we discover the attenuation'.
+3. Search was ~30 calls, summaries only, appendices of 2506.13763 and the last 88k chars of 2406.12839 unread. 'Not found' still means 'not found here'.
+
 ## C. Not done
-Google Scholar forward citations of Midpoint Generative Models; Midpoint Appendices A-C; full DeepJump read; any search for the
+Google Scholar forward citations of Midpoint Generative Models; appendices of arXiv:2506.13763; full DeepJump read; any search for the
 persistence-vs-mean baseline issue in MD benchmarks (Phase 4 survey); full-text read of the 15 competitor papers beyond what the old assessment claims.

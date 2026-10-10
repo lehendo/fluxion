@@ -111,6 +111,10 @@ degenerate case, and the static model is not analysed here). The Hungarian-vs-ad
 * The vanishing of the optimal velocity at the midpoint for *i.i.d.* endpoints with equal marginals is published (Midpoint Generative Models,
   arXiv:2605.29920, Prop 3.1). Proposition 2 here is the same swap argument applied to exchangeable observed pairs (stationarity +
   reversibility), a one-line generalization; we do not claim it as new beyond that.
+* **The general principle is prior art.** Allocating training across noise levels by how much loss reduction is attainable at each is established: EDM (Karras et al. 2022) and, most explicitly,
+  arXiv:2506.13763 (optimal loss J*_sigma = E||x0||^2 - E||E[x0|x_t]||^2 per noise level, training allocated by the gap J - J*). Our f(t) is that decomposition. What is specific here (not found in the pages read):
+  the equal-marginal observed-pair setting, the oddness about t = 1/2 (signal vanishes at the midpoint rather than merely varying), the Gaussian reversible closed form with the [2.33, 3.0] bound, and the 2.76x measurement.
+* Midpoint's appendices were read via the tool (independence assumed throughout, no Gaussian closed form, no quantification of learnable loss under uniform t; it notes the field does not vanish for t != 1/2).
 * In the pages read we did not find the attenuation result (Proposition 3), the Gaussian closed form with the [2.33, 3.0] bound, or its use to
   diagnose CFM on temporally coupled MD frames. This is a search negative (19 calls; Midpoint's appendices and part of the survey unread),
   not evidence of novelty. Propositions 1-3 are elementary and may be folklore; a deeper search is required before any novelty wording.
