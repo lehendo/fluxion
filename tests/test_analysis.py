@@ -271,3 +271,18 @@ class TestClosedForm:
             slope = (zt * d).mean() / (zt * zt).mean()
             f_mc = 1 - ((d - slope * zt) ** 2).mean() / (d ** 2).mean()
             assert abs(f_mc - f_closed_form(t, rho)) < 0.004
+
+
+class TestKabschRMSD:
+    def test_pairwise_rmsd_is_invariant_to_rigid_motion_and_matches_noise_level(self):
+        from analysis.geometry import kabsch_pairwise_rmsd
+        rng = np.random.default_rng(0)
+        L = 60
+        X0 = rng.standard_normal((L, 3)) * 5
+        th = 0.7; Rz = np.array([[np.cos(th), -np.sin(th), 0], [np.sin(th), np.cos(th), 0], [0, 0, 1]])
+        X1 = X0 @ Rz.T + np.array([3.0, -2.0, 7.0])                 # rigid motion: RMSD 0
+        X2 = X0 + 0.5 * rng.standard_normal((L, 3))                  # noise: RMSD ~ 0.5*sqrt(3) minus fit shrinkage
+        D = kabsch_pairwise_rmsd(np.stack([X0, X1, X2]))
+        assert D[0, 1] < 1e-6
+        assert 0.7 < D[0, 2] < 0.95
+        assert np.allclose(D, D.T, atol=1e-6)

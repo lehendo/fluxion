@@ -2,88 +2,104 @@
 """
 scripts/verify_atlas_refetch.py
 
-Is the re-fetched ATLAS data frame-identical to what produced the latents? Run only when raw files exist.
-Ground truth = the extraction-time records (scripts/build_extraction_metadata.py) and the shard manifests.
+Is the re-fetched ATLAS data frame-identical to what produced the latents? Ground truth = the extraction-time logs
+(extraction_metadata.json) and the latent shards. Pre-registered in experiments/EXPERIMENT_LOG.md (2026-10-10).
+Layout: <analysis-root>/<protein>/{<p>.pdb, <p>_R{1,2,3}.xtc}; xtc = 1001 frames at 100 ps; analysis frame k <-> latent frame 10k.
 
-  (i)  residues and ATOM COUNT: re-fetched PDB protein residue count == n_residues and total protein atoms
-       == the logged 'real (incl. H) atoms' (e.g. 9686 for 1b25_D)
-  (ii) xtc file names, frame count per replica == logged traj_frames; shard manifests cover frames 0..N-1
-       contiguously; trajectory dt == 10 ps (the stride the latents assume)
-  (iii) Mantel rho: re-run scripts/verify_latent_pairwise_sensitivity.py on --mantel-proteins and compare with
-       the rho logged when the latents were originally validated (deterministic frame selection => should
-       reproduce to ~1e-3; a frame-misaligned re-fetch would collapse it)
-Any failed or impossible check => Phase 1B is CONDITIONAL on unverified data. Exit code 1 on any failure.
+  (i)   PDB residue count == n_residues AND protein atom count == real_atoms (exact)
+  (ii)  every replica: n_frames == 1001, dt == 100 ps, n_atoms == PDB atoms
+  (iii) Mantel alignment, replica 1, 250 frames (k = 0,4,..,996): Spearman(pairwise C-alpha RMSD, pairwise latent distance)
+        aligned (R1 coords vs R1 latents at 10k); negative controls: (a) R1 coords vs R2 and R3 latents, (b) R1 coords vs R1
+        latents circularly shifted by half the window.  PASS iff aligned >= 0.20 and aligned - max(control) >= 0.15.
+Exit code 1 on any failure; per-protein verdicts are written to JSON.
 """
 from __future__ import annotations
-import argparse, json, re, subprocess, sys
+import argparse, json, re, sys
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import MDAnalysis as mda
+import numpy as np
+import torch
+from scipy.stats import spearmanr
+from analysis.geometry import kabsch_pairwise_rmsd
+from data_pipeline.dataset import LatentDataset, _REPLICA_RE
 
-MANTEL_TOL = 1e-3
+PILOT = ("16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1b2s_E,1b2s_F,"
+         "1b8d_K,1bgf_A,1bkp_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B").split(",")
+K_FRAMES = list(range(0, 1000, 4))                                 # 250 analysis frames
+MIN_ALIGNED, MIN_MARGIN = 0.20, 0.15
 
 
-def parse_logged_rho(log: Path) -> dict[str, float]:
-    out, cur = {}, None
-    for line in log.read_text(errors="replace").splitlines():
-        m = re.match(r"PROTEIN: (\S+)", line)
-        if m: cur = m.group(1)
-        m = re.search(r"Spearman\(pairwise RMSD, pairwise latent dist\) = ([-\d.]+)", line)
-        if m and cur: out[cur] = float(m.group(1))
-    return out
+def condensed(M):
+    return M[np.triu_indices_from(M, k=1)]
+
+
+def replica_slices(ds):
+    out = {}
+    for i, (path, _) in enumerate(ds.index_map):
+        c = int(re.sub(r"\D", "", _REPLICA_RE.search(path.name).group(1)))
+        out.setdefault(c, [i, i + 1])[1] = i + 1
+    return {k: tuple(v) for k, v in out.items()}
+
+
+def latent_pairwise(ds, start, n_res):
+    z = torch.stack([ds._load_frame(start + 10 * k)[:n_res].flatten() for k in K_FRAMES]).double()
+    return torch.cdist(z, z).numpy()
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--raw-dir", type=Path, default=Path("/scratch/arjunc4/atlas_raw"))
+    ap.add_argument("--analysis-root", type=Path, default=Path("/scratch/arjunc4/atlas_analysis"))
     ap.add_argument("--metadata-json", type=Path, default=Path("/scratch/arjunc4/fluxion_data/extraction_metadata.json"))
     ap.add_argument("--latents-dir", type=Path, default=Path("/scratch/arjunc4/fluxion_data/latents"))
-    ap.add_argument("--logged-mantel", type=Path, default=Path("/u/arjunc4/fluxion/logs/verify_pairwise_sweep_10112972.out"))
-    ap.add_argument("--mantel-proteins", nargs="+", default=["1btk_A", "1a62_A", "1bgf_A"])
+    ap.add_argument("--fetch-meta", type=Path, default=Path("/scratch/arjunc4/fluxion_data/atlas_refetch_meta.json"))
     ap.add_argument("--out", type=Path, default=Path("/scratch/arjunc4/fluxion_data/phase1_results/atlas_verification.json"))
+    ap.add_argument("--proteins", nargs="+", default=PILOT)
     a = ap.parse_args()
     meta = json.loads(a.metadata_json.read_text())
+    fetch_meta = json.loads(a.fetch_meta.read_text()) if a.fetch_meta.exists() else {}
+    ns = torch.load(a.latents_dir / "norm_stats.pt", weights_only=True)
     report, failed = {}, []
-    for p, e in sorted((k, v) for k, v in meta.items() if not k.startswith("_")):
-        d = a.raw_dir / p
+    print(f"{'protein':8s} {'res':>11s} {'atoms':>13s} {'frames/dt':>10s} | {'rho aligned':>11s} {'R2':>7s} {'R3':>7s} {'shift':>7s} | verdict")
+    for p in a.proteins:
+        d = a.analysis_root / p
+        r: dict = {"fetch": fetch_meta.get(p, {}).get("headers")}
         if not (d / ".complete").exists():
-            report[p] = {"status": "NOT RE-FETCHED"}; failed.append(p); continue
-        r = {}
-        pdb = next((x for x in sorted(d.rglob("*.pdb")) if "_R" not in x.stem), None)
-        u = mda.Universe(str(pdb)); prot = u.select_atoms("protein")
-        r["n_residues"] = (len(prot.residues), e["n_residues"])
-        real_atoms = {v.get("real_atoms") for v in e["replicas"].values()}
-        r["real_atoms"] = (prot.n_atoms, sorted(real_atoms))
-        for rep, v in sorted(e["replicas"].items()):
-            xtc = next((x for x in d.rglob("*.xtc") if x.name == v["xtc"]), None)
-            if xtc is None: r[f"R{rep}"] = {"xtc_missing": v["xtc"]}; continue
-            t = mda.Universe(str(pdb), str(xtc)).trajectory
-            shards = json.loads((a.latents_dir / p / "manifest.json").read_text())[p]["shards"]
-            mine = [s for s in shards if f"_R{rep}_" in s["path"]]
-            seen = sorted({(s["first_idx"], s["last_idx"]) for s in mine})
-            contiguous = seen[0][0] == 0 and all(b[0] == a_[1] + 1 for a_, b in zip(seen, seen[1:])) and seen[-1][1] + 1 == v["traj_frames"]
-            r[f"R{rep}"] = {"n_frames": (t.n_frames, v["traj_frames"]), "dt_ps": t.dt, "manifest_contiguous_0_to_N": contiguous}
-        ok = (r["n_residues"][0] == r["n_residues"][1] and set([r["real_atoms"][0]]) == set(r["real_atoms"][1]) and
-              all(isinstance(v, dict) and v.get("n_frames", (0, 1))[0] == v.get("n_frames", (0, 1))[1]
-                  and abs(v.get("dt_ps", 0) - 10.0) < 1e-3 and v.get("manifest_contiguous_0_to_N") for k, v in r.items() if k.startswith("R")))
-        r["pass"] = bool(ok); report[p] = r
-        if not ok: failed.append(p)
-    logged = parse_logged_rho(a.logged_mantel)
-    mant = {}
-    for p in a.mantel_proteins:
-        if not (a.raw_dir / p / ".complete").exists(): mant[p] = {"status": "NOT RE-FETCHED"}; failed.append(f"mantel:{p}"); continue
-        out = subprocess.run([sys.executable, "scripts/verify_latent_pairwise_sensitivity.py", "--latents-dir", str(a.latents_dir),
-                              "--atlas-raw", str(a.raw_dir), "--protein-id", p, "--n-load", "1500", "--n-sample", "50"],
-                             capture_output=True, text=True).stdout
-        m = re.search(r"Spearman\(pairwise RMSD, pairwise latent dist\) = ([-\d.]+)", out)
-        new = float(m.group(1)) if m else None
-        old = logged.get(p)
-        ok = new is not None and old is not None and abs(new - old) <= MANTEL_TOL
-        mant[p] = {"logged": old, "re_fetched": new, "pass": ok}
-        if not ok: failed.append(f"mantel:{p}")
+            report[p] = {**r, "status": "NOT RE-FETCHED", "pass": False}; failed.append(p); print(f"{p:8s} NOT RE-FETCHED"); continue
+        e = meta[p]
+        pdb = next(x for x in sorted(d.rglob("*.pdb")) if "_R" not in x.stem)
+        prot = mda.Universe(str(pdb)).select_atoms("protein")
+        real_atoms = {v["real_atoms"] for v in e["replicas"].values()}
+        r["residues"] = [len(prot.residues), e["n_residues"]]
+        r["protein_atoms"] = [prot.n_atoms, sorted(real_atoms)]
+        ok_i = r["residues"][0] == r["residues"][1] and {prot.n_atoms} == real_atoms
+        coords, ok_ii = {}, True
+        for rep in (1, 2, 3):
+            t = mda.Universe(str(pdb), str(d / f"{p}_R{rep}.xtc")).trajectory
+            r[f"R{rep}"] = {"n_frames": t.n_frames, "dt_ps": t.dt, "n_atoms": t.n_atoms}
+            ok_ii &= (t.n_frames == 1001 and abs(t.dt - 100.0) < 1e-3 and t.n_atoms == len(mda.Universe(str(pdb)).atoms))
+            if rep == 1:
+                u = mda.Universe(str(pdb), str(d / f"{p}_R1.xtc")); ca = u.select_atoms("name CA")
+                coords = np.stack([ca.positions.copy() for ts in u.trajectory[K_FRAMES]])
+        ds = LatentDataset(a.latents_dir, p, load_pair=False, norm_stats=ns, lag=1)
+        sl = replica_slices(ds); n_res = e["n_residues"]
+        rm = condensed(kabsch_pairwise_rmsd(coords))
+        rho = {}
+        for rep in (1, 2, 3):
+            rho[f"R{rep}"] = float(spearmanr(rm, condensed(latent_pairwise(ds, sl[rep][0], n_res)))[0])
+        zs = torch.stack([ds._load_frame(sl[1][0] + 10 * k)[:n_res].flatten() for k in K_FRAMES]).double()
+        zs = torch.roll(zs, shifts=len(K_FRAMES) // 2, dims=0)
+        rho["shift"] = float(spearmanr(rm, condensed(torch.cdist(zs, zs).numpy()))[0])
+        ctrl = max(rho["R2"], rho["R3"], rho["shift"])
+        ok_iii = rho["R1"] >= MIN_ALIGNED and rho["R1"] - ctrl >= MIN_MARGIN
+        r["mantel"] = rho; r["pass_i"], r["pass_ii"], r["pass_iii"] = bool(ok_i), bool(ok_ii), bool(ok_iii)
+        r["pass"] = bool(ok_i and ok_ii and ok_iii); report[p] = r
+        if not r["pass"]: failed.append(p)
+        print(f"{p:8s} {r['residues'][0]:5d}/{r['residues'][1]:<5d} {r['protein_atoms'][0]:6d}/{sorted(real_atoms)[0]:<6d} {'ok' if ok_ii else 'BAD':>10s} | "
+              f"{rho['R1']:11.3f} {rho['R2']:7.3f} {rho['R3']:7.3f} {rho['shift']:7.3f} | {'PASS' if r['pass'] else 'FAIL (i=%s ii=%s iii=%s)' % (ok_i, ok_ii, ok_iii)}", flush=True)
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_text(json.dumps({"per_protein": report, "mantel": mant, "failed": failed}, indent=1))
-    print(json.dumps({"mantel": mant, "failed": failed}, indent=1))
-    print("ATLAS RE-FETCH VERIFIED" if not failed else f"NOT VERIFIED -> Phase 1B conditional ({len(failed)} failures/gaps)")
+    a.out.write_text(json.dumps({"per_protein": report, "failed": failed, "criteria": {"min_aligned": MIN_ALIGNED, "min_margin": MIN_MARGIN}}, indent=1))
+    print("\nATLAS RE-FETCH VERIFIED for all proteins" if not failed else f"\nNOT VERIFIED for: {failed}")
     sys.exit(1 if failed else 0)
 
 
