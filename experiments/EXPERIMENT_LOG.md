@@ -258,3 +258,10 @@ B1 CARTESIAN CONTROL (needs the verified coordinates). Per protein, leave-one-re
 B2 (random-init trunk) is now feasible in principle (coordinates available, 1000 frames/replica) but needs a Chai-1 re-extraction
   with re-initialized weights; NOT started. B3 (sequence-only floor): the pre-fix latents ARE that condition; partial result
   from scripts/b3_prefix_variance.py (frame variance corrected vs pre-fix).
+
+B3 STATUS, 2026-10-10. The pre-fix latents (latents_prefix_broken_20260813) were also purged from scratch (232 KB of empty directories
+remain), so the planned frame-variance comparison cannot be run and the script was removed. B3's expected result (sequence-only,
+no template => zero frame variance) is documented in docs/code_review_2026-08.md from the original investigation: pre-fix, a protein's
+latents were bit-identical across frames, and the coordinate-consuming features (TokenDistanceRestraint, TokenPairPocketRestraint,
+MissingChainContact) were IDENTICAL_ACROSS_CONFORMATIONS. Re-extracting a sequence-only condition would reproduce one latent N times by
+construction and is not informative. B3 therefore rests on the earlier documentation, not on new data.
