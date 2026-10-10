@@ -228,3 +228,33 @@ E5 PHASE 1C on the probes (brief's kill conditions apply): C1 contraction ratio 
 ATLAS SALVAGE: check mirrors (Zenodo / institutional / bulk archive); check whether pairwise C-alpha RMSD matrices from the original Mantel
   validation were logged (a distance-matrix-level B1 would then be possible); keep the patient retry running; do not block on it.
 PHASE 1 REPORTING: Phase 1 = 1A + 1C, with 1B explicitly marked BLOCKED and PENDING.
+
+## RETRACTION and ATLAS plan, 2026-10-10 (before the verification runs)
+
+RETRACTION. The earlier report "the ATLAS API is down" was WRONG. With HTTP/1.1 and a normal User-Agent the API answers from the
+cluster in 0.5 s, and it answered from outside the cluster too. Two separate things were misread as an outage: (1) the cluster's
+default HTTP/2 requests to API endpoints hang; (2) /ATLAS/protein/{id} (3 x 10,000 frames) is zipped on the fly and hits the gateway
+timeout (HTTP 502 after exactly 5 min), and my fetcher's 'server up' probe used exactly that slow endpoint. /ATLAS/analysis/{id}
+(3 replicas x 1000 frames, saved every 100 ps) downloads in ~10 s. Independent confirmation from the live metadata endpoint:
+1btk_A has 169 residues (extraction log: 169). ATLAS release v2 = 2024-11-18; 1btk_A_analysis.zip last-modified 2025-11-21.
+
+FRAME MAP. Analysis frame k (100 ps) <-> latent frame_idx 10k (our 10 ps frames). Cartesian controls therefore reach lags >= 100 ps only.
+
+VERIFICATION (scripts/verify_atlas_refetch.py, rewritten for the analysis layout) PASS iff, for all 19 proteins:
+  (i) re-fetched PDB residue count == extraction-log n_residues AND protein atom count == extraction-log real_atoms (exact);
+  (ii) n_frames == 1001 per replica at dt == 100 ps (== every 10th of 10001 latent frames);
+  (iii) alignment: Spearman(pairwise C-alpha RMSD, pairwise latent distance) on 250 frames of replica 1, latent frame_idx = 10k:
+        aligned rho >= 0.20 AND aligned rho exceeds every cross-replica NEGATIVE-CONTROL rho (R1 coordinates vs R2 / R3 latents) by >= 0.15.
+        (a frame-misaligned or re-versioned trajectory would collapse the aligned rho)
+  Any failure => B1 is run only on the proteins that pass and the rest are reported as unverified.
+
+B1 CARTESIAN CONTROL (needs the verified coordinates). Per protein, leave-one-replica-out (3 folds), frames at 100 ps stride, lags
+  100 ps, 1 ns, 10 ns (50 ns computed, marked uninterpretable). Representations, both reduced to the SAME per-protein dimension
+  k = min(3*n_res, 384): (a) Chai-1 latents (real tokens, flattened, PCA to k), (b) aligned C-alpha coordinates (flattened, PCA to k).
+  Identical probe suite (identity, mean, linear_diag, linear_full, shrink, MLP), reported as % over identity. Statistic: paired
+  difference (Chai-1 minus Cartesian) per protein, 95% CI over PDB entries.
+  KILL: if Cartesian PCA matches (CI of the paired difference includes 0) or beats (CI < 0) Chai-1 at lags <= 10 ns, the premise
+  'pretrained trunk latents encode dynamics beyond coordinates' is falsified and becomes the paper's headline, not an appendix.
+B2 (random-init trunk) is now feasible in principle (coordinates available, 1000 frames/replica) but needs a Chai-1 re-extraction
+  with re-initialized weights; NOT started. B3 (sequence-only floor): the pre-fix latents ARE that condition; partial result
+  from scripts/b3_prefix_variance.py (frame variance corrected vs pre-fix).
