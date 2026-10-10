@@ -22,6 +22,8 @@ import argparse, json, re
 from collections import defaultdict
 from pathlib import Path
 
+FLOAT_REL_TOL = 0.05   # resubmissions on different GPUs differ by ~1%; >5% would be a real disagreement
+
 PAT = {
     "worker": re.compile(r"Worker \d+: (\S+) replica (\d+)"),
     "pdb": re.compile(r"^\s*PDB: (\S+)"),
@@ -72,12 +74,18 @@ def main() -> None:
     for (p, rep), recs in sorted(by_key.items()):
         merged: dict = {}
         for k in ("n_residues", "traj_frames", "L_bucket", "heavy_atoms", "real_atoms", "pdb", "xtc",
-                  "frame_diff_0_vs", "pair_shape", "d_single"):
+                  "pair_shape", "d_single"):
             vals = {json.dumps(r[k]) for r in recs if k in r}
-            if len(vals) > 1:
+            if len(vals) > 1:                       # exact-match fields: any disagreement is a problem
                 problems.append(f"{p} R{rep}: conflicting {k}: {sorted(vals)}")
             if vals:
                 merged[k] = json.loads(sorted(vals)[0])
+        fv = [r["frame_diff_0_vs"] for r in recs if "frame_diff_0_vs" in r]
+        if fv:                                      # float fingerprint: GPU nondeterminism => tolerance
+            merged["frame_diff_0_vs"] = sum(fv) / len(fv)
+            merged["frame_diff_0_vs_spread_rel"] = (max(fv) - min(fv)) / max(max(fv), 1e-9)
+            if merged["frame_diff_0_vs_spread_rel"] > FLOAT_REL_TOL:
+                problems.append(f"{p} R{rep}: frame_diff spread {merged['frame_diff_0_vs_spread_rel']:.3f} > {FLOAT_REL_TOL}")
         merged["n_logs"] = len(recs)
         out.setdefault(p, {"replicas": {}})["replicas"][str(rep)] = merged
     for p, e in out.items():
