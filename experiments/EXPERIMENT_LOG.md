@@ -265,3 +265,61 @@ no template => zero frame variance) is documented in docs/code_review_2026-08.md
 latents were bit-identical across frames, and the coordinate-consuming features (TokenDistanceRestraint, TokenPairPocketRestraint,
 MissingChainContact) were IDENTICAL_ACROSS_CONFORMATIONS. Re-extracting a sequence-only condition would reproduce one latent N times by
 construction and is not informative. B3 therefore rests on the earlier documentation, not on new data.
+
+=====================================================================================================================
+2026-10-10 (later). RESULTS: ATLAS verification (job 11272956) and the lag sweep + Phase 1C (job 11271942).
+Raw files: results/phase1/atlas/{atlas_verification.json,verification_table.txt}, results/phase1/sweep/{across_proteins,asymptote,onec}.json,
+sweep_stdout.txt. Numbers first; interpretation after.
+
+ATLAS VERIFICATION, as pre-registered. Criteria (i) residue/atom counts and (ii) frame count/dt/atoms: PASS for 19/19 (exact matches).
+Criterion (iii) (aligned Mantel rho >= 0.20 AND exceeds every negative control by >= 0.15): PASS for 8/19, FAIL for 11/19.
+  aligned rho / max cross-replica control rho / shift control (full table in verification_table.txt)
+  PASS: 1ab1_A .648/.002/.040   1ah7_A .674/.365/.281   1aol_A .609/.446/.232   1b2s_F .600/.165/-.080
+        1bq8_A .536/.252/-.018  1btk_A .603/.363/.071   1bxy_A .555/.058/.251   1bxy_B .580/.105/.019
+  FAIL: 16pk_A .223/.191   1a62_A .328/.310   1af7_A .618/.541   1ail_A .071/.005 (aligned < .20)   1b0n_A .548/.402 (shift .459)
+        1b25_D .685/.627   1b2s_E .664/.558   1b8d_K .704/.571   1bgf_A .314/.185 (shift .352)   1bkp_A .488/.410   1bx7_A .260/.126
+Two honesty notes on the verdict. (1) The script's control set includes the half-window circular-shift control, which the text of this
+pre-registration (line ~246) did not list (it listed cross-replica only). It is MORE stringent; I checked every verdict by hand and none
+changes if the shift control is dropped (closest case: 1b0n_A margin .146 vs .15 threshold). (2) Reading of the failures: cross-replica
+negative-control rho is high (up to .63) for most failing proteins. All three replicas start from one structure and relax along similar
+paths, so pairwise-distance matrices on 250 frames share a slow trend even across replicas; the control is therefore not a clean null for
+those proteins. That is a hypothesis about WHY the criterion fails; it has NOT been tested. It does not turn a FAIL into a PASS.
+CONSEQUENCE (pre-registered): B1 runs only on the 8 passing proteins (7 PDB entries: 1bxy_A/B share an entry); the other 11 are
+reported as "unverified for criterion (iii); (i) and (ii) pass". A detrended/short-lag alignment check on the 11 would be a POST HOC
+control; it is NOT being run without Arjun's decision.
+
+B1 KILL CONDITION, restated before launch: on the verified proteins, at lags <= 10 ns, paired difference (Chai-1 PCA minus Cartesian PCA,
+matched dimension k = min(3 n_res, 384), leave-one-replica-out, % over identity), 95% CI over PDB entries. If the CI includes 0 or lies
+below 0, 'trunk latents encode dynamics beyond coordinates' is falsified and becomes the paper's headline. Power note: 7 entries, so wide CIs.
+
+SWEEP (19 proteins, 17 PDB-entry folds, masked real tokens, S0.3 held-out folds; 95% CI over entries; 50 ns column NOT interpretable, n_eff~2):
+  improvement over IDENTITY (%)   10 ps        100 ps       1 ns         10 ns        50 ns*
+    linear_diag                   +15.23       +19.10       +24.84       +34.69       +49.62
+    shrink (alpha*z0)             +15.22       +19.09       +24.84       +34.70       +49.66
+    linear_full                   +14.81       +18.58       +24.11       +33.86       +48.62
+    MLP                           +13.39       +17.60       +23.32       +33.17       +48.34
+    mean                          -60.28       -28.76       -0.49 [-12.6,+9.3]  +27.79  +49.62
+    DiT (in-sample) raw/EMA, 1 or 8 Euler steps: between -0.02 and +0.01 at every lag (CIs at or around 0)
+  improvement over MEAN (%)       10 ps        100 ps       1 ns         10 ns        50 ns*
+    identity (= DiT row)          +33.1        +17.5        -3.9         -41.8        -104.7
+    linear_diag                   +43.97       +34.14       +22.89       +8.50        -0.14
+  ASYMPTOTE (E4): id/mean error ratio measured 0.669, 0.825, 1.039, 1.418, 2.047 [1.89,2.23] at 10 ps..50 ns vs 2(1-rho_ACF) 0.694, 0.810,
+  1.019, 1.388, 1.926; probe-vs-identity -> 49.6% (50% predicted); probe-vs-mean -> -0.14% (0 predicted). Differences between measured and
+  ACF-predicted id/mean are small but CI excludes 0 at 1 ns (+.020) and 10 ns (+.030): the ACF-based prediction is not exact.
+  Crossover: mean baseline beats identity from ~1 ns on (id/mean = 1.04 there); identity beats mean below that. Probe gain over identity
+  at 10 ps (15.23%) equals the headline direct-regression f(0) = 15.23% from phase1_headline.json (independent code path, same rows).
+  Lag-1 contradiction check: the log line ~191 says identity beats mean by ~21% (original 3 proteins, id/mean = 21.46%); on 19 proteins
+  with fold-held-out evaluation the same quantity at 10 ps is 33.1%. Different protein sets and row sampling; both are 'identity beats mean
+  at short lag'. The paper must quote the 19-protein number and define it (mean over proteins of per-protein ratios).
+
+PHASE 1C (probes only; kill condition pre-registered at E5): alpha = 0.704, 0.632, 0.525, 0.334, 0.037 (10 ps ... 50 ns). Eigenvalues of A at
+10 ps: max|lambda| = 0.911, median Re = 0.640, fraction |lambda|>0.9 = 0.002, fraction complex = 0.000.
+  full linear over shrinkage: -0.44% [-1.04,+0.06] (10 ps), -0.58% [-1.19,-0.08]* (100 ps), -0.91% [-1.50,-0.45]* (1 ns), -1.25% [-1.56,-1.00]* (10 ns)
+  linear_diag over shrinkage: +0.01% [-0.01,+0.03] (10 ps); MLP over shrinkage -2.04% [-3.38,-0.91]* at 10 ps.
+  cos(predicted, true displacement): shrinkage alone .404; linear_full .398; 'cosine beyond shrinkage' +.05.
+KILL CONDITION TRIGGERED (first clause): full linear does not beat one-parameter shrinkage beyond the CI at any lag (it is worse at
+100 ps, 1 ns, 10 ns). The per-residue linear predictability of z1 from z0 in these latents is mean reversion (contraction by alpha toward
+the per-position mean), with no direction-specific structure the 384x384 map can add. Scope: this is per-residue-token (384-d) rows; no
+cross-residue coupling was tested. 'Dynamics' must not be claimed on the strength of the probe gains.
+The in-sample DiT is indistinguishable from identity at every lag: it learned a velocity field whose Euler integral does nothing to z0.
+GRADIENT SNR (11271943) still running (1024/4096 microbatches at last look); result pending.
