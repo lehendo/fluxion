@@ -192,3 +192,31 @@ class TestMask:
         z[:, 6:] = 3.0                      # only 2 constant positions
         with pytest.raises(AssertionError):
             verify_mask(real_mask(8, 5), z)  # claims 3 padded; one of them varies
+
+
+from analysis.probes import train_old_mlp, OldMLPProbe
+
+
+class TestOldProbeFaithfulness:
+    def test_vectorized_two_input_ols_matches_the_old_lstsq_loop(self):
+        g = torch.Generator().manual_seed(3)
+        z0 = torch.randn(3000, 7, generator=g); zp = torch.randn(3000, 7, generator=g)
+        z1 = 0.6 * z0 - 0.2 * zp + 0.05 + 0.1 * torch.randn(3000, 7, generator=g)
+        a, k0, k1 = fit_linear_diag(z0, z1, zp)
+        for c in range(7):                                       # the old script's per-channel lstsq
+            X = torch.stack([torch.ones(3000), z0[:, c], zp[:, c]], 1).double()
+            sol = torch.linalg.lstsq(X, z1[:, c].double().unsqueeze(1)).solution.squeeze(1)
+            assert torch.allclose(torch.stack([a[c], k0[c], k1[c]]).double(), sol, atol=1e-4)
+
+    def test_old_mlp_architecture_matches_old_probe_parameter_count(self):
+        # old MLPProbe(d=384, hidden=256): (768*256+256)+(256*256+256)+(256*384+384)
+        n = sum(p.numel() for p in OldMLPProbe(384, 256).parameters())
+        assert n == (768 * 256 + 256) + (256 * 256 + 256) + (256 * 384 + 384)
+
+    def test_old_mlp_trains(self):
+        g = torch.Generator().manual_seed(0)
+        z0 = torch.randn(4000, 8, generator=g); zp = torch.randn(4000, 8, generator=g)
+        z1 = 0.5 * z0 + 0.2 * zp
+        m, best, ep = train_old_mlp(zp[:3000], z0[:3000], z1[:3000], zp[3000:], z0[3000:], z1[3000:],
+                                    hidden=32, max_epochs=30, batch_size=64)
+        assert best < 0.5 * z1.var().item()

@@ -40,15 +40,16 @@ def fit_linear_diag(z0: torch.Tensor, z1: torch.Tensor, z_prev: torch.Tensor | N
         a = m1 - k0 * m0
         return a.float(), k0.float(), None
     zp = z_prev.double()
-    a = torch.zeros(d, dtype=torch.float64)
-    k0 = torch.zeros(d, dtype=torch.float64)
-    k1 = torch.zeros(d, dtype=torch.float64)
-    ones = torch.ones(n, dtype=torch.float64)
-    for c in range(d):
-        X = torch.stack([ones, z0d[:, c], zp[:, c]], dim=1)
-        sol = torch.linalg.lstsq(X, z1d[:, c : c + 1]).solution.squeeze(1)
-        a[c], k0[c], k1[c] = sol[0], sol[1], sol[2]
-    return a.float(), k0.float(), k1.float()
+    ones_n = float(n)
+    Sx, Sw, Sy = z0d.sum(0), zp.sum(0), z1d.sum(0)
+    Sxx, Sww, Sxw = (z0d * z0d).sum(0), (zp * zp).sum(0), (z0d * zp).sum(0)
+    Sxy, Swy = (z0d * z1d).sum(0), (zp * z1d).sum(0)
+    G = torch.stack([torch.stack([torch.full_like(Sx, ones_n), Sx, Sw], -1),
+                     torch.stack([Sx, Sxx, Sxw], -1),
+                     torch.stack([Sw, Sxw, Sww], -1)], -2)                   # [d, 3, 3]
+    b = torch.stack([Sy, Sxy, Swy], -1).unsqueeze(-1)                       # [d, 3, 1]
+    beta = torch.linalg.solve(G, b).squeeze(-1)                             # [d, 3]
+    return beta[:, 0].float(), beta[:, 1].float(), beta[:, 2].float()
 
 
 def predict_linear_diag(z0, a, k0, z_prev=None, k1=None):
@@ -143,3 +144,52 @@ def row_sqerr(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """Per-row squared error averaged over channels -> [N]. Mean of this over
     rows equals the token-and-channel-averaged MSE the flow loss reports."""
     return ((pred - target) ** 2).mean(dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# The OLD probe's MLP, verbatim architecture/optimizer/schedule (scripts/compute_nonlinear_probe.py),
+# with the data held on the device. Used only by the Step 0 ladder.
+# ---------------------------------------------------------------------------
+
+class OldMLPProbe(nn.Module):
+    def __init__(self, d_single: int = 384, hidden: int = 256):
+        super().__init__()
+        self.net = nn.Sequential(nn.Linear(2 * d_single, hidden), nn.GELU(),
+                                 nn.Linear(hidden, hidden), nn.GELU(),
+                                 nn.Linear(hidden, d_single))
+
+    def forward(self, z_prev, z0):
+        return self.net(torch.cat([z0, z_prev], dim=-1))
+
+
+def train_old_mlp(zp_tr, z0_tr, z1_tr, zp_va, z0_va, z1_va, hidden=256, lr=1e-3, batch_size=1024,
+                  max_epochs=30, patience=4, device="cpu", seed=0):
+    """Adam, batch 1024, <=30 epochs, patience 4, early stop on the GIVEN validation rows.
+    S0.0 passes the TEST proteins here (the old leak); S0.1+ pass training-side entries."""
+    torch.manual_seed(seed)
+    dev = torch.device(device)
+    model = OldMLPProbe(z0_tr.shape[1], hidden).to(dev)
+    opt = torch.optim.Adam(model.parameters(), lr=lr)
+    zp_tr, z0_tr, z1_tr = zp_tr.to(dev), z0_tr.to(dev), z1_tr.to(dev)
+    zp_va, z0_va, z1_va = zp_va.to(dev), z0_va.to(dev), z1_va.to(dev)
+    n, best, state, bad, ep = z0_tr.shape[0], float("inf"), None, 0, 0
+    for _ in range(max_epochs):
+        model.train()
+        perm = torch.randperm(n, device=dev)
+        for s0 in range(0, n, batch_size):
+            i = perm[s0:s0 + batch_size]
+            opt.zero_grad(set_to_none=True)
+            nn.functional.mse_loss(model(zp_tr[i], z0_tr[i]), z1_tr[i]).backward()
+            opt.step()
+        ep += 1
+        model.eval()
+        with torch.no_grad():
+            v = nn.functional.mse_loss(model(zp_va, z0_va), z1_va).item()
+        if v < best - 1e-8:
+            best, bad, state = v, 0, {k: t.detach().clone() for k, t in model.state_dict().items()}
+        else:
+            bad += 1
+            if bad >= patience:
+                break
+    model.load_state_dict(state)
+    return model.cpu().eval(), best, ep
