@@ -88,3 +88,53 @@ LABELS. The DiT is in-sample (trained on all 19 proteins) and is keyed "DiT[in-s
 output; every table/figure/caption must carry that label. Probes are leave-one-PDB-entry-out.
 
 MLP SELECTION. Early stopping uses two held-in entries only; never the held-out fold.
+
+## Pre-registration addendum 2, 2026-10-10 (after review; supersedes S0-TOL above)
+
+CHANGE OF CRITERION. S0-TOL (+/-10% relative) is REPLACED. Reason: S0.0 recomputes the same
+quantity on the same data, so the only legitimate disagreement is sampling error; a 10% band
+would hide a real discrepancy and is not defensible. New criterion: the OLD PUBLISHED value
+must lie inside the bootstrap 95% CI of the new sampled estimate (blocks per measured tau_int).
+KILL: if S0.0 fails this criterion, stop at S0.0 and report; that is a sixth finding. The
+old +/-10% code path is removed from scripts/phase1a_fit.py.
+
+STEP 0 IS A LADDER (one change per rung; old split {1bxy_A,1bxy_B,1btk_A} until S0.3):
+  S0.0  old protocol verbatim: padding counted, probe-style pooling (equal weight per protein,
+        all L positions), (z0,zprev) inputs, old MLP (hidden 256, lr 1e-3, patience 4) early-
+        stopping on the TEST proteins. Targets: mean 0.01944, linear 0.001638, MLP 0.001701;
+        identity 0.002079 (a DiT-eval number: token-weighted, 400 samples; a different protocol,
+        reported with its own weighting).
+  S0.1  + MLP early-stops on training-side entries only.
+  S0.2  + padding masked (real residues only).
+  S0.3  + leave-one-PDB-entry-out (17 folds), lag 1.
+For S0.1-S0.3 the deltas ARE the result (no tolerance). Output: a table attributing the 91.25%
+figure to baseline choice, padding dilution, selection leak and split structure.
+Dense lag-1 cache for the ladder (3000 starts x 48 rows ~ 144k rows/protein, matching the old
+~150k) is separate from the 600-start sweep cache. Weighting note: the old probe pooled ~150k
+rows PER PROTEIN (equal weight per protein); the DiT eval was token-weighted (~L_bucket). The
+two weightings are applied to their own quantities and never mixed.
+Expectation recorded in advance: S0.2 moves a lot (1btk_A is 34% padding, not ~19%).
+
+v_theta ANALYSIS (Phase 1, inference on the existing checkpoint, in-sample like all DiT numbers):
+  - distribution of ||v_theta(z_t,t)|| vs ||z1-z0|| over real tokens, pooled and per protein, ratio.
+  - ||v_theta|| vs t on a fixed grid of 21 values in [0.01,0.99], using true (z0,z1) lag-1 pairs.
+  - overlay: empirical E[delta|z_t] per t (diagonal linear estimator fit on sufficient statistics
+    over all 19 proteins, in-sample to match the DiT), plus corr(v_theta, delta).
+  Pre-stated outcomes: (a) ||v|| ~ 0 at every t incl. endpoints = total collapse, learned nothing;
+  (b) ||v|| small but structured (dip at t=1/2, rising to the endpoints) = learned exactly the
+  signal the detailed-balance argument says is available. Either is reported; (b) would confirm the
+  Phase 2 proposition from the trained model. Phase 1C (shrinkage C1-C4) is NOT run on the DiT: a
+  six-digit collapse to identity means it learned no contraction; stated explicitly in the paper.
+
+ATLAS RE-FETCH VERIFICATION (before the re-fetched data is used for anything but the mask):
+  (i) sequence/residue count vs the stored L_bucket (Chai-1 bucket for n_res) and the extractor's
+  constant-token count; (ii) frames per replica and stride vs the shard manifests and frame_idx;
+  (iii) Mantel rho (latent vs Calpha-RMSD) recomputed on re-fetched coordinates for 3 proteins and
+  compared to the rho logged when the latents were validated; a frame-misaligned re-fetch would
+  collapse it. Record ATLAS release/version and fetch date. If any check fails or cannot be done:
+  Phase 1B is CONDITIONAL on unverified data, stated plainly.
+
+HOUSEKEEPING. Commits on branch tmlr up to and including the series starting at 877f8d3 and ending
+at the commit that precedes this addendum's first commit carry a Co-Authored-By trailer; they predate
+the standing no-trailer rule (2026-10-09). Left in place deliberately (history is part of the record,
+not force-pushed). All later commits have none.
