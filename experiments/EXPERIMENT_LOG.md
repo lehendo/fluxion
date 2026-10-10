@@ -361,3 +361,13 @@ the mean gradient is ~2.5x smaller than the per-step noise (SNR 0.39), and about
 whether Adam's momentum/averaging over ~192k steps compensates is NOT tested here. ||E g|| is nonzero (SNR is well-measured, jackknife SE small),
 so the checkpoint is not at a stationary point of the training loss.
 Not claimed: that the trained DiT 'could' learn the attenuated signal with a larger batch. The in-sample DiT equals identity at every lag (sweep result above).
+
+=====================================================================================================================
+2026-10-10 (night). CORRECTION TO "CORRECTION 2": THE OT-COUPLING LEG DOES NOT APPLY TO THE TRAINED MODEL.
+Fact (read from code, training/train.py): the trained temporal DiT pairs z0 = frame i, z1 = frame i+1 and passes the pair to FlowMatcher unchanged;
+train.py never imports training/ot_coupling.py. Only training/train_static.py (noise -> equilibrium frame, a different model, not analysed in the TMLR
+work) applies minibatch OT. Consequently any statement that the temporal model's collapse is partly due to OT re-coupling is withdrawn. The coupling
+argument survives only as a general remark about OT-CFM as commonly configured and about train_static.py (theory.md section 6).
+Propagated to: theory.md (header, section 6, wording 'trained CFM model'), README.md (correction notice at top), docs/novelty_assessment.md (notice item 4),
+this log. STILL TO PROPAGATE: the research-summary doc's correction block (done in the restructure, step 6 of the order of work) and project memory.
+Also recorded: the README title/abstract still say 'OT-CFM'; the paper must describe the temporal model as 'CFM with the observed adjacent-frame coupling'.

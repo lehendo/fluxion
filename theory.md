@@ -3,7 +3,7 @@
 Status: revised 2026-10-10 after the Phase 1 measurements. The first draft claimed the optimal velocity field is
 zero. **That is refuted and has been removed.** What the data confirm is the antisymmetry of the optimal field about
 t = 1/2 and a severe, quantifiable attenuation of the learnable signal. Section 5 holds the numerical verification, Section 6 a scoping
-remark on OT re-coupling, and Section 7 the prior-art search (still being filled in; see its status line).
+remark on OT re-coupling (a general remark that does not apply to the trained temporal model), and Section 7 the prior-art search (still being filled in; see its status line).
 
 Wording rule used throughout: the objective *offers almost no learnable signal*; we never say the model "found
 the optimum". The trained model did not reach the (nonzero) optimum either.
@@ -87,22 +87,24 @@ identical rows, 95% CIs bootstrapped over the 17 entries. Raw numbers: `results/
   measured 2.76 [2.73, 2.80]. The predicted curve is within 0.08 percentage points of the measured f(t) for every t ≤ 0.5 and within
   0.35 points for t = 0.6 to 0.9. The right half runs slightly above the prediction (f(1) = 15.7% vs f(0) = 15.2%, CIs overlapping), a small
   departure from exact reversibility. No parameter was fitted to the curve.
-* **Which ratio is the cost of random-t?** The first (2.76) is the like-for-like footing: the OT-CFM model sees z_t only, and the
+* **Which ratio is the cost of random-t?** The first (2.76) is the like-for-like footing: the trained CFM model sees z_t only, and the
   direct comparator sees z0 only. The 4.88 compares against a regression that also sees z_prev; the extra factor is the value
   of velocity information, a different question from the cost of the objective. We report 2.76 as the cost of the objective.
 * **Caveat.** These are *linear* estimators of the conditional mean, so they lower-bound the attainable fraction. The MLP probe
   on (z0, z_prev) generalized worse than linear across the 19 proteins (+16.0% vs +26.7% over identity), which argues against large
   nonlinear signal at lag 1, but that is not a proof for E[δ | z_t].
 
-## 6. Remark on minibatch optimal-transport re-coupling (scope)
+## 6. General remark on minibatch optimal-transport re-coupling (does NOT apply to the trained temporal model)
 
-If the CFM pairs are not the observed pairs but are re-coupled by minibatch optimal transport between two batches of equilibrium
-frames, the assignment minimizes Σ‖z1 − z0‖² and, for a continuous p, the OT map between identical measures is the identity as the
-batch grows, so the regression target δ → 0: a genuinely degenerate objective.
+CORRECTION (2026-10-10). An earlier version of this analysis (and the project's "Correction 2") attributed part of the temporal DiT's
+failure to OT-style re-coupling. That leg is withdrawn: `training/train.py` pairs z0 = frame i with z1 = frame i+1 and hands the pair to
+`FlowMatcher` unchanged. It never imports `training/ot_coupling.py`, so the trained model used the observed coupling (assumption A3), not an OT coupling.
 
-**This does not apply to the trained temporal DiT in this work.** `training/train.py` uses the observed adjacent-frame coupling
-(A3); only `training/train_static.py` (noise → equilibrium frame, whose marginals differ) uses OT coupling. We therefore do not
-attribute the trained model's behaviour to OT re-coupling, and the Hungarian-vs-adjacent displacement comparison planned in 2B was not run.
+The remark that survives is general and concerns configurations the trained model did not use. If CFM pairs are re-coupled by minibatch
+optimal transport between two batches of equilibrium frames, the assignment minimizes Σ‖z1 − z0‖², and for a continuous p the OT map between
+identical measures is the identity as the batch grows, so the regression target δ → 0. That is a degenerate objective, and it is a statement about
+OT-CFM *as commonly configured* and about `training/train_static.py` (noise → equilibrium frame; the marginals differ there, so it is not this
+degenerate case, and the static model is not analysed here). The Hungarian-vs-adjacent displacement comparison planned in 2B was not run.
 
 ## 7. Prior-art position (Phase 2C; full query log in `docs/prior_art_search.md`)
 

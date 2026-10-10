@@ -1,5 +1,11 @@
 # Fluxion: OT-CFM in Frozen Chai-1 Latent Space for Protein Conformational Ensembles
 
+> **CORRECTION NOTICE (2026-10-10).** The "OT-CFM" label in this README describes `training/train_static.py` (static-ensemble pivot, minibatch OT coupling of noise to equilibrium frames) only.
+> The temporal DiT trained by `training/train.py` (z0 = frame i, z1 = frame i+1) uses the *observed* adjacent-frame pairing with plain CFM regression and never calls
+> `training/ot_coupling.py`. Results about the temporal model (see `experiments/EXPERIMENT_LOG.md`, `theory.md`) must not be attributed to OT coupling. The project's scientific
+> position has also changed since this README was written; the current state is in `experiments/EXPERIMENT_LOG.md` (TMLR conversion log).
+
+
 > Generating protein conformational ensembles by learning a minibatch-optimal-transport conditional flow matching (OT-CFM) velocity field in Chai-1's internal trunk latent space, trained on ATLAS MD trajectories, decoded back to real 3D structure via Chai-1's own diffusion module.
 
 ---
