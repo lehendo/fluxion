@@ -65,7 +65,7 @@ def measure(protein: str, latents_dir: Path, ns, seq_json: Path, seed: int, P: i
     def frames(idxs):
         return torch.stack([ds._load_frame(i)[pos] for i in idxs])      # [T, P, d]
 
-    verify_mask(mask, torch.stack([ds._load_frame(i) for i in range(0, len(ds), len(ds) // 24)][:24]))
+    verify_mask(mask, torch.stack([ds._load_frame(i) for i in range(24)]))   # one shard: padding is run-dependent
 
     S_short, S_long, strided = [], [], []
     for r, (a, b) in sorted(reps.items()):

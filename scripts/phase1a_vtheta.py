@@ -67,8 +67,7 @@ def main() -> None:
     n_res = n_residues(args.metadata_json, args.protein)
     mask = real_mask(L, n_res)
     g = torch.Generator().manual_seed(args.seed + zlib.crc32(args.protein.encode()) % 100000)
-    probe = torch.randperm(len(ds), generator=g)[:48].tolist()
-    verify_mask(mask, torch.stack([ds._load_frame(i) for i in probe]))
+    verify_mask(mask, torch.stack([ds._load_frame(i) for i in range(24)]))   # one shard: padding is run-dependent
     real_idx = mask.nonzero().squeeze(1)
     mean_pos = torch.load(args.cache / f"{args.protein}__meta.pt", weights_only=False)["mean_pos"].float()
     d = mean_pos.shape[1]

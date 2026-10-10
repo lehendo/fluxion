@@ -33,7 +33,10 @@ def real_mask(L_bucket: int, n_res: int) -> torch.Tensor:
 def verify_mask(mask: torch.Tensor, frames: torch.Tensor, tol: float = 1e-12) -> dict:
     """
     Asserts (a) the number of masked positions equals L_bucket - n_res and (b) every masked
-    position is constant across `frames` [n, L, d]. Returns diagnostics, including how many
+    position is constant across `frames` [n, L, d]. `frames` MUST come from a single shard
+    (one extraction run): padding is constant within a run but takes a different value in other
+    runs (checked 2026-10-10: e.g. 16pk_A's padding constant changes at 20 of 60 shard boundaries),
+    while real tokens are continuous across shard boundaries. Returns diagnostics, including how many
     REAL positions also have zero variance (expected 0; if not, they are kept, not masked).
     """
     L = mask.shape[0]

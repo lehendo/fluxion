@@ -110,9 +110,8 @@ def main() -> None:
     L = ds_probe._load_frame(0).shape[0]
     n_res = n_residues(args.sequences_json, args.protein)
     real = real_mask(L, n_res)
-    g_probe = torch.Generator().manual_seed(args.seed)
-    probe_idx = torch.randperm(len(ds_probe), generator=g_probe)[:48].tolist()
-    mask_info = verify_mask(real, torch.stack([ds_probe._load_frame(i) for i in probe_idx]))
+    # padding is constant only within ONE shard/run, so assert on 24 frames of the first shard
+    mask_info = verify_mask(real, torch.stack([ds_probe._load_frame(i) for i in range(24)]))
     real_idx = real.nonzero().squeeze(1)
     n_real = int(real.sum())
     print(f"[extract] {args.protein}: L_bucket={L}, n_residues(sequence)={n_res}, "
