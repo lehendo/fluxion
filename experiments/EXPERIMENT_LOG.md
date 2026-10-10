@@ -371,3 +371,15 @@ argument survives only as a general remark about OT-CFM as commonly configured a
 Propagated to: theory.md (header, section 6, wording 'trained CFM model'), README.md (correction notice at top), docs/novelty_assessment.md (notice item 4),
 this log. STILL TO PROPAGATE: the research-summary doc's correction block (done in the restructure, step 6 of the order of work) and project memory.
 Also recorded: the README title/abstract still say 'OT-CFM'; the paper must describe the temporal model as 'CFM with the observed adjacent-frame coupling'.
+
+=====================================================================================================================
+2026-10-10 (night). POST HOC REVISION OF VERIFICATION CRITERION (iii), pre-registered here BEFORE the new numbers are computed.
+LABEL: POST HOC. The original criterion (iii) was badly specified by me, not by the data. The three ATLAS replicas of a protein start from the
+same structure, so a cross-replica negative control cannot be near zero; its observed 0.15-0.63 range on the failing proteins is expected, not
+anomalous. The right negative control for 'are these the same frames' is a time-shifted WITHIN-replica control (same trajectory, wrong time).
+REVISED (iii'): aligned Spearman rho >= 0.20 AND aligned - max over within-replica circular time shifts of the latent sequence by 1/4, 1/2 and 3/4
+of the 250-frame window (25, 50, 75 ns) >= 0.15. Cross-replica rho (R2, R3) is still computed and REPORTED as a confound, but is not gating.
+Already seen before this pre-registration: the half-window shift column of the first run. The 1/4 and 3/4 shifts are new; the revised criterion
+takes the max over all three, and the half-window-only variant is also reported. The original and revised verdicts are shown side by side; (i), (ii) unchanged.
+Reason not to rescue proteins: criterion thresholds (0.20, 0.15) are unchanged. If the revised criterion passes more proteins, B1 is re-run on the
+revised set and reported under BOTH the 8-protein and revised-set versions; B1's kill condition is evaluated on each.

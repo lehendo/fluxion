@@ -11,6 +11,8 @@ Layout: <analysis-root>/<protein>/{<p>.pdb, <p>_R{1,2,3}.xtc}; xtc = 1001 frames
   (iii) Mantel alignment, replica 1, 250 frames (k = 0,4,..,996): Spearman(pairwise C-alpha RMSD, pairwise latent distance)
         aligned (R1 coords vs R1 latents at 10k); negative controls: (a) R1 coords vs R2 and R3 latents, (b) R1 coords vs R1
         latents circularly shifted by half the window.  PASS iff aligned >= 0.20 and aligned - max(control) >= 0.15.
+POST HOC revision (see EXPERIMENT_LOG.md 2026-10-10 night): additionally computes within-replica circular-shift controls at 1/4, 1/2, 3/4 of the window;
+        revised (iii') = aligned >= 0.20 and aligned - max(those shifts) >= 0.15; cross-replica rho is reported as a confound only.
 Exit code 1 on any failure; per-protein verdicts are written to JSON.
 """
 from __future__ import annotations
@@ -53,14 +55,14 @@ def main() -> None:
     ap.add_argument("--metadata-json", type=Path, default=Path("/scratch/arjunc4/fluxion_data/extraction_metadata.json"))
     ap.add_argument("--latents-dir", type=Path, default=Path("/scratch/arjunc4/fluxion_data/latents"))
     ap.add_argument("--fetch-meta", type=Path, default=Path("/scratch/arjunc4/fluxion_data/atlas_refetch_meta.json"))
-    ap.add_argument("--out", type=Path, default=Path("/scratch/arjunc4/fluxion_data/phase1_results/atlas_verification.json"))
+    ap.add_argument("--out", type=Path, default=Path("/scratch/arjunc4/fluxion_data/phase1_results/atlas_verification_revised.json"))
     ap.add_argument("--proteins", nargs="+", default=PILOT)
     a = ap.parse_args()
     meta = json.loads(a.metadata_json.read_text())
     fetch_meta = json.loads(a.fetch_meta.read_text()) if a.fetch_meta.exists() else {}
     ns = torch.load(a.latents_dir / "norm_stats.pt", weights_only=True)
     report, failed = {}, []
-    print(f"{'protein':8s} {'res':>11s} {'atoms':>13s} {'frames/dt':>10s} | {'rho aligned':>11s} {'R2':>7s} {'R3':>7s} {'shift':>7s} | verdict")
+    print(f"{'protein':8s} {'res':>11s} {'atoms':>13s} {'frames/dt':>10s} | {'aligned':>7s} {'R2':>6s} {'R3':>6s} | {'sh1/4':>6s} {'sh1/2':>6s} {'sh3/4':>6s} | verdicts")
     for p in a.proteins:
         d = a.analysis_root / p
         r: dict = {"fetch": fetch_meta.get(p, {}).get("headers")}
@@ -87,18 +89,27 @@ def main() -> None:
         rho = {}
         for rep in (1, 2, 3):
             rho[f"R{rep}"] = float(spearmanr(rm, condensed(latent_pairwise(ds, sl[rep][0], n_res)))[0])
-        zs = torch.stack([ds._load_frame(sl[1][0] + 10 * k)[:n_res].flatten() for k in K_FRAMES]).double()
-        zs = torch.roll(zs, shifts=len(K_FRAMES) // 2, dims=0)
+        zs0 = torch.stack([ds._load_frame(sl[1][0] + 10 * k)[:n_res].flatten() for k in K_FRAMES]).double()
+        zs = torch.roll(zs0, shifts=len(K_FRAMES) // 2, dims=0)
         rho["shift"] = float(spearmanr(rm, condensed(torch.cdist(zs, zs).numpy()))[0])
-        ctrl = max(rho["R2"], rho["R3"], rho["shift"])
+        # POST HOC revised control (EXPERIMENT_LOG.md 2026-10-10 night): within-replica circular shifts of 1/4, 1/2, 3/4 of the window
+        for sh, name in ((len(K_FRAMES) // 4, "shift_q1"), (3 * len(K_FRAMES) // 4, "shift_q3")):
+            zq = torch.roll(zs0, shifts=sh, dims=0)
+            rho[name] = float(spearmanr(rm, condensed(torch.cdist(zq, zq).numpy()))[0])
+        ctrl = max(rho["R2"], rho["R3"], rho["shift"])                                   # ORIGINAL (pre-registered) criterion
         ok_iii = rho["R1"] >= MIN_ALIGNED and rho["R1"] - ctrl >= MIN_MARGIN
+        ctrl_rev = max(rho["shift_q1"], rho["shift"], rho["shift_q3"])                    # REVISED, within-replica only
+        ok_iii_rev = rho["R1"] >= MIN_ALIGNED and rho["R1"] - ctrl_rev >= MIN_MARGIN
+        ok_iii_half = rho["R1"] >= MIN_ALIGNED and rho["R1"] - rho["shift"] >= MIN_MARGIN  # revised, half-window shift only
         r["mantel"] = rho; r["pass_i"], r["pass_ii"], r["pass_iii"] = bool(ok_i), bool(ok_ii), bool(ok_iii)
-        r["pass"] = bool(ok_i and ok_ii and ok_iii); report[p] = r
+        r["pass_iii_revised"], r["pass_iii_revised_halfonly"] = bool(ok_iii_rev), bool(ok_iii_half)
+        r["pass"] = bool(ok_i and ok_ii and ok_iii); r["pass_revised"] = bool(ok_i and ok_ii and ok_iii_rev); report[p] = r
         if not r["pass"]: failed.append(p)
         print(f"{p:8s} {r['residues'][0]:5d}/{r['residues'][1]:<5d} {r['protein_atoms'][0]:6d}/{sorted(real_atoms)[0]:<6d} {'ok' if ok_ii else 'BAD':>10s} | "
-              f"{rho['R1']:11.3f} {rho['R2']:7.3f} {rho['R3']:7.3f} {rho['shift']:7.3f} | {'PASS' if r['pass'] else 'FAIL (i=%s ii=%s iii=%s)' % (ok_i, ok_ii, ok_iii)}", flush=True)
+              f"{rho['R1']:7.3f} {rho['R2']:6.3f} {rho['R3']:6.3f} | {rho['shift_q1']:6.3f} {rho['shift']:6.3f} {rho['shift_q3']:6.3f} | "
+              f"orig {'PASS' if r['pass'] else 'FAIL'}  revised {'PASS' if r['pass_revised'] else 'FAIL'} (half-only {'PASS' if (ok_i and ok_ii and ok_iii_half) else 'FAIL'})", flush=True)
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_text(json.dumps({"per_protein": report, "failed": failed, "criteria": {"min_aligned": MIN_ALIGNED, "min_margin": MIN_MARGIN}}, indent=1))
+    a.out.write_text(json.dumps({"per_protein": report, "failed": failed, "failed_revised": [q for q, v in report.items() if not v.get("pass_revised")], "criteria": {"min_aligned": MIN_ALIGNED, "min_margin": MIN_MARGIN}}, indent=1))
     print("\nATLAS RE-FETCH VERIFIED for all proteins" if not failed else f"\nNOT VERIFIED for: {failed}")
     sys.exit(1 if failed else 0)
 
