@@ -245,3 +245,29 @@ class TestGradientSNREstimators:
         mu2, _ = estimates(gs.sum(0), float((gs.double() ** 2).sum()), M)
         # the naive plug-in ||mean||^2 would be ~ D/M = 0.033; the unbiased estimator is centered on 0
         assert abs(mu2) < 0.03
+
+
+class TestClosedForm:
+    def test_attenuation_limits_and_bounds(self):
+        from analysis.theory import attenuation_R
+        assert abs(attenuation_R(1.0) - 1 / 3) < 1e-6
+        assert 0.42 < attenuation_R(0.0) < 0.43
+        for rho in np.linspace(0, 0.999, 25):
+            assert 1 / 3 - 1e-6 <= attenuation_R(rho) <= 0.4293      # 1/R in [2.33, 3.0] for any rho
+
+    def test_curve_vanishes_at_midpoint_and_is_symmetric(self):
+        from analysis.theory import f_closed_form
+        t = np.array([0.1, 0.3])
+        assert abs(f_closed_form(0.5, 0.6)) < 1e-12
+        assert np.allclose(f_closed_form(t, 0.6), f_closed_form(1 - t, 0.6))
+
+    def test_matches_monte_carlo_gaussian_pairs(self):
+        from analysis.theory import f_closed_form
+        rng = np.random.default_rng(0)
+        rho, n = 0.7, 400_000
+        z0 = rng.standard_normal(n); z1 = rho * z0 + np.sqrt(1 - rho ** 2) * rng.standard_normal(n)
+        for t in (0.0, 0.2, 0.35):
+            zt, d = (1 - t) * z0 + t * z1, z1 - z0
+            slope = (zt * d).mean() / (zt * zt).mean()
+            f_mc = 1 - ((d - slope * zt) ** 2).mean() / (d ** 2).mean()
+            assert abs(f_mc - f_closed_form(t, rho)) < 0.004
