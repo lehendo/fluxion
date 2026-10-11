@@ -698,3 +698,13 @@ READINGS, fixed in advance (A = uniform/peak, B = clamp/peak, C = truncate/peak,
 No claim in docs/practitioner_notes.md goes beyond what the matching reading supports; the note keeps stating its evidence level.
 BUDGET. 8 runs x (600 steps x 256 samples / ~140 samples/s = ~18 min + startup) ~ 2.7 GPU-h. Training compute so far 7.24 (3a) + 3c (~3.5-4.0 expected, running) + ~2.7 = ~13.5-14.0 of the 15 GPU-hour cap.
 Evaluation compute (4 milestones x 2 arms, then 3c's) is additional to that figure and is NOT counted against the cap here; if Arjun counts it, the cap would be exceeded and that should be decided explicitly. This is the last Phase 3 training compute.
+
+=====================================================================================================================
+2026-10-11. EVALUATION JOB FAILURE (mine) AND A PARTIAL OBSERVATION. The first milestone-100 evaluation (job 11311553) crashed after 25 min with 'OSError: Too many open files': each protein's dataset keeps its HDF5 shard handles open
+(63 shards per protein) and 18 proteins exceeded the descriptor limit. Fixed (handles closed per protein; descriptor limit raised; batch 16 for speed) and all four milestone jobs resubmitted (11312274-77). The crashed job wrote no JSON.
+PARTIAL OBSERVATION FROM ITS LOG (3 of 5 held-out proteins, milestone 100, one-step, EMA; shrinkage alpha = 0.717 fitted on the training entries; NOT the finished evaluation):
+  16pk_A  shrinkage +19.20%   uniform +19.77%   beta +19.43%
+  1aol_A  shrinkage +11.17%   uniform +11.57%   beta +10.63%
+  1bq8_A  shrinkage +15.72%   uniform +10.52%   beta +12.09%
+On 1bq8_A both arms are 3.6-5.2 points BELOW shrinkage, so 'the model is consistently a few tenths above shrinkage' is not what the partial data show: two proteins slightly above, one well below. The per-entry deltas, their CI over the 4 held-out entries and
+the sign count are reported when the evaluation completes; nothing is concluded from three proteins.
