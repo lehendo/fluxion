@@ -61,6 +61,16 @@ def integrate(model, z0, pairs_b, mask, steps: int):
     return z
 
 
+def close_handles(ds) -> None:
+    """Release the HDF5 file handles a CenteredLagPairs dataset keeps open (63 shards/protein would exhaust the descriptor limit over 18 proteins)."""
+    for f in ds.ds.file_handles.values():
+        try:
+            f.close()
+        except Exception:
+            pass
+    ds.ds.file_handles.clear()
+
+
 def sample_batches(ds, n: int, seed: int, bs: int):
     g = torch.Generator().manual_seed(seed)
     idx = torch.randperm(len(ds), generator=g)[:n].tolist()
@@ -77,6 +87,7 @@ def fit_baselines(train_ds: dict, dev, seed: int):
             n = v.sum()
             cur = dict(n=n, sx=x.sum((0, 1)), sy=y.sum((0, 1)), sxx=(x * x).sum((0, 1)), sxy=(x * y).sum((0, 1)))
             S = cur if S is None else {k: S[k] + cur[k] for k in S}
+        close_handles(ds)
     alpha = float(S["sxy"].sum() / S["sxx"].sum())
     mx, my = S["sx"] / S["n"], S["sy"] / S["n"]
     k = (S["sxy"] / S["n"] - mx * my) / (S["sxx"] / S["n"] - mx * mx)
@@ -90,7 +101,7 @@ def flow_loss_curves(ds, pairs, models, dev, seed: int, n_frames: int):
     num = {m: np.zeros(len(T_GRID)) for m in models}; den = 0.0
     g = torch.Generator().manual_seed(seed)
     idx = torch.randperm(len(ds), generator=g)[:n_frames].tolist()
-    for batch in DataLoader([ds[i] for i in idx], batch_size=8, shuffle=False, collate_fn=collate):
+    for batch in DataLoader([ds[i] for i in idx], batch_size=16, shuffle=False, collate_fn=collate):
         z0, z1, pi, mask = (x.to(dev) for x in batch)
         valid = (~mask).float().unsqueeze(-1); pb = pairs[pi]; u = z1 - z0
         den += float(((u ** 2) * valid).sum())
@@ -107,7 +118,7 @@ def flow_loss_curves(ds, pairs, models, dev, seed: int, n_frames: int):
 @torch.no_grad()
 def score_protein(ds, pairs, models, alpha, a, k, dev, seed: int, arm: str):
     sums = {}
-    for z0, z1, pi, mask in sample_batches(ds, N_FRAMES, seed, 8):
+    for z0, z1, pi, mask in sample_batches(ds, N_FRAMES, seed, 16):
         z0, z1, pi, mask = z0.to(dev), z1.to(dev), pi.to(dev), mask.to(dev)
         valid = (~mask).float().unsqueeze(-1)
         pb = pairs[pi]
@@ -163,6 +174,7 @@ def main() -> None:
                 if first:
                     row.update({k: v for k, v in r.items() if not k.startswith("dit_")}); first = False
                 row.update({k: v for k, v in r.items() if k.startswith("dit_")})
+            close_handles(ds)
             res["per_protein"][f"{group}:{p}"] = {"group": group, "mse": row, "pct_vs_identity": {k: 100 * (1 - v / row["identity"]) for k, v in row.items() if k != "identity"}}
             print(f"[eval] {group} {p}: " + "  ".join(f"{k}={100 * (1 - v / row['identity']):+.2f}%" for k, v in row.items() if k in ("shrink", "linear_diag") or k.endswith("_ema_n1")), flush=True)
     summary = {}

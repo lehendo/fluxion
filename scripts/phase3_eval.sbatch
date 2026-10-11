@@ -15,6 +15,7 @@ mkdir -p logs
 source ~/.bashrc
 conda activate fluxion
 cd /u/arjunc4/fluxion
+ulimit -n 65536 2>/dev/null || ulimit -n $(ulimit -Hn)
 P3=/scratch/arjunc4/fluxion_data/phase3
 mkdir -p $P3/eval
 for m in 100 025 050 075; do

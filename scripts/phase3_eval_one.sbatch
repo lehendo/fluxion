@@ -15,6 +15,7 @@ mkdir -p logs
 source ~/.bashrc
 conda activate fluxion
 cd /u/arjunc4/fluxion
+ulimit -n 65536 2>/dev/null || ulimit -n $(ulimit -Hn)
 P3=/scratch/arjunc4/fluxion_data/phase3
 mkdir -p $P3/eval_sec
 python scripts/phase3_eval.py --arm uniform $P3/uniform/milestone_$M.pt --arm beta $P3/beta/milestone_$M.pt --out $P3/eval_sec/eval_$M.json
