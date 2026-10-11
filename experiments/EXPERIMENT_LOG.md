@@ -588,3 +588,31 @@ documented as part of the result; (B) restart BOTH arms with a pre-registered fi
 it needs the cap lifted; (C) restart only the beta arm (~4 GPU-h, total ~11.2 + evaluations): the arms would then differ in optimizer settings unless the fix is neutral to the uniform arm. None is launched.
 EVALUATIONS (pre-registered protocol: flow-loss R(t) on a 41-point grid, attained reduction under each arm's own clamped distribution, ratio vs 1.89; downstream vs identity and shrinkage; at 25/50/75/100%) are QUEUED
 (jobs 11311533 on IllinoisComputes-GPU, 11311553-56 on secondary, one per milestone); they will be run on the checkpoints as they stand regardless of (A)/(B)/(C), so that the data exists either way.
+
+=====================================================================================================================
+2026-10-11. PHASE 3a OUTCOME: PRE-REGISTERED vs OBSERVED, and Arjun's decision (Option A + one new arm, 3c). Milestone evaluations are still queued; everything below marked MONITOR is the 16-pairs-per-held-out-protein
+monitor in the trainer, NOT the pre-registered evaluation. Live (training-batch, in-sample) numbers are not reported as results anywhere.
+PRE-REGISTERED (2026-10-12 entry): the primary test was the held-out attained flow-loss reduction per arm and the treatment/control ratio against 1.89 (pass band [1.5, 2.3], both arms > 0); the interpretation table listed
+'both > 0' rows ('batch/SNR was the binding constraint for the original run' vs 'attenuation costs the predicted factor').
+OBSERVED SO FAR. (i) The UNIFORM arm learned: held-out MONITOR raw-weights one-step improvement over identity first > 1% at step 1400, > 10% at step 2500, 17.25% at step 6400 (EMA 17.48%). (ii) The BETA arm learned FAST and its speed is
+measured on held-out data, not the live metric: raw-weights monitor 15.3% at step 200 (the first monitor point above 1%; the monitor at step 100 was -0.03%), i.e. >= 7x sooner than uniform for > 1% (1400 vs <=200) and >= 12x sooner for
+> 10% (2500 vs <=200) before its divergence at step ~350; final monitor raw 14.95% / EMA 16.74%. (iii) Final held-out MONITOR levels are close across arms (uniform EMA 17.48 vs beta EMA 16.74; raw 17.25 vs 14.95; beta slightly lower) - to be
+confirmed or refuted by the pre-registered evaluation, which also supplies the same-split shrinkage ceiling.
+WHAT THIS DOES AND DOES NOT SHOW. The original 192k-step run recovered 0%; the uniform arm here did not. So uniform-t sampling per se did not prevent learning in the NEW setting, and the attenuation account is not sufficient to explain the
+original null. But the new setting differs from the original in at least these ways: batch 16 -> 256; padding masked from the loss and attention (the original counted bucket padding as zero-error tokens); per-position centering;
+40M -> 9M parameters; LR schedule (constant 1e-4 -> warmup + cosine, peak 5.66e-4); gate LR (1e-3 -> 5.66e-3); EMA decay (0.9999 -> 0.999); t clamp ([1e-5 affine] -> [0.01, 0.99]); held-out split and exclusion of the 768-bucket protein.
+Which of these unblocked learning is NOT identified. The batch/SNR explanation is the leading candidate (E3: SNR 0.39 at the original batch 16) and is analytical until 3c runs; it is not established.
+Attenuation is not refuted either: it predicts a slower, not a different, solution, and the held-out speed difference (>= 7-12x) is in the predicted direction; the predicted signal gain is only 1.9x, so a >= 7x speed difference is larger than a
+simple amplitude argument suggests, and that quantitative gap is unexplained here.
+SHRINKAGE-CEILING READING (not yet tested): if the only signal available at 10 ps is mean reversion (Phase 1C), a sufficiently trained model should land at the shrinkage solution and stop; the monitor levels (~15-17.5%) are in the neighbourhood
+of the Phase 1 probe-vs-identity figure (15.2%, 17 folds). That comparison is NOT valid across splits; the evaluation computes alpha*z0 on the SAME 4 held-out entries.
+BETA DIVERGENCE: status of the explanation. The treatment arm's t was drawn from Beta(0.25,0.25) and CLAMPED to [0.01, 0.99], which put 17.1% of draws exactly at t = 0.01 and at t = 0.99 (inputs within 1% of z0 or z1). The clamp was
+the specification (a first truncation implementation was replaced because the clamp reproduced the specified 10.2% / 1.9x). Hypothesis (Arjun's): boundary point masses on near-clean inputs trigger the low-noise ill-conditioning of velocity regression
+(Zeng & Yan, arXiv:2509.20952, in docs/prior_art_search.md) and blew up at peak LR; truncation would avoid it. Evidence: ONE run; the uniform arm also had a smaller transient on the same LR ramp (step 250, window reduction -2.3%, grad norm 0.012, loss
+ratio never above 1.0003 over 50-step windows); both arms had gate LR 5.66e-3 and LR at its peak (5.66e-4) when this happened. So LR-peak/gate-LR instability is an equally supported cause, with the clamp possibly amplifying it. The hypothesis is
+untested and the claim 'truncation avoids it' has no evidence yet. It will be written as a practitioner note stating exactly that. An optional 600-step diagnostic (clamp vs truncation vs uniform at the same LR, ~1.5 GPU-h) could test it; not run
+without Arjun's decision.
+PROCESS FINDING (mine and Arjun's): a pre-registered stop condition fired and nothing acted on it because the monitoring poll could not run. Guards belong in the trainer. Replay of the proposed in-run guard (50-step window = 12,800 samples,
+halt if windowed training loss > 2x the windowed v = 0 loss after warmup) on the logged runs: it would have fired on the beta arm at step 360 (max windowed ratio 2.70) and never on the uniform arm (max 1.0003).
+BUDGET (Arjun's decision): Option A for the existing arms (report as run; the beta speed observation precedes the divergence; both arms had ~5,000 steps after recovery to converge). Two-configuration limit lifted and the cap raised to 14 GPU-hours for
+exactly ONE more arm (3c). Used so far: 7.24 GPU-h of training; evaluations are additional.
