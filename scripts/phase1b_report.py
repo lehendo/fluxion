@@ -19,19 +19,22 @@ import itertools, json, sys
 from pathlib import Path
 import numpy as np
 
-B1 = Path("results/phase1/b1")
+B1 = Path(sys.argv[1] if len(sys.argv) > 1 else "results/phase1/b1")
 LAGS = ["100ps", "1ns", "10ns", "50ns"]
-PREDS = ["linear_diag", "linear_full", "shrink", "mlp", "mean"]
+PREDS = ["linear_diag", "linear_diag_ridge", "linear_full", "shrink", "mlp", "mean"]
+M_TRUSTED = 12      # pre-specified trusted cells the claim rests on: {linear_diag, shrink} x {100 ps, 1 ns, 10 ns} x {8-protein set, 13-protein set}
+M_WITH_RIDGE = 18   # plus the post hoc ridge row: 3 lags x 2 sets
 
 
 def entry(p: str) -> str:
     return p.split("_")[0]
 
 
-def boot_ci(x, n=20000, seed=0):
+def boot_ci(x, n=20000, seed=0, level=95.0):
     x = np.asarray(x); rng = np.random.default_rng(seed)
     m = x[rng.integers(0, len(x), (n, len(x)))].mean(1)
-    return float(x.mean()), float(np.percentile(m, 2.5)), float(np.percentile(m, 97.5))
+    tail = (100 - level) / 2
+    return float(x.mean()), float(np.percentile(m, tail)), float(np.percentile(m, 100 - tail))
 
 
 def signflip_p(x):
@@ -66,6 +69,8 @@ def report(R):
         print(f"\n=== lag {lag}{'  (NOT interpretable, n_eff~2)' if lag == '50ns' else ''} ===")
         print(f"{'predictor':12s} {'Chai % vs id':>13s} {'Cart % vs id':>13s} | {'paired diff Chai-Cart':>34s} | entries Chai>Cart  sign-flip p")
         for pr in PREDS + ["id/mean"]:
+            if pr == "linear_diag_ridge" and any("linear_diag_ridge" not in r["lags"][lag]["chai"] for r in R.values()):
+                continue                                              # results from before the ridge diagnostic have no such row
             ch, ca = {}, {}
             for p, r in R.items():
                 c, g = r["lags"][lag]["chai"], r["lags"][lag]["cart"]
@@ -76,9 +81,10 @@ def report(R):
                 ch.setdefault(entry(p), []).append(vc); ca.setdefault(entry(p), []).append(vg)
             c_e = np.array([np.mean(ch[e]) for e in ents]); g_e = np.array([np.mean(ca[e]) for e in ents]); d = c_e - g_e
             m, lo, hi = boot_ci(d)
+            bonf = boot_ci(d, n=200000, level=100 * (1 - 0.05 / M_TRUSTED))
             star = "*" if lo > 0 else ("v" if hi < 0 else " ")
-            print(f"{pr:12s} {c_e.mean():13.2f} {g_e.mean():13.2f} | {m:+8.2f} [{lo:+8.2f},{hi:+8.2f}] {star:1s}            | {int((d > 0).sum())}/{len(d)}              {signflip_p(d):.3f}")
-            out.setdefault(lag, {})[pr] = {"chai": float(c_e.mean()), "cart": float(g_e.mean()), "diff": [m, lo, hi], "n_chai_gt": int((d > 0).sum()), "n": len(d), "per_entry_diff": dict(zip(ents, map(float, d)))}
+            print(f"{pr:12s} {c_e.mean():13.2f} {g_e.mean():13.2f} | {m:+8.2f} [{lo:+8.2f},{hi:+8.2f}] {star:1s}            | {int((d > 0).sum())}/{len(d)}              {signflip_p(d):.3f}  Bonf(m={M_TRUSTED}) [{bonf[1]:+7.2f},{bonf[2]:+7.2f}]")
+            out.setdefault(lag, {})[pr] = {"chai": float(c_e.mean()), "cart": float(g_e.mean()), "diff": [m, lo, hi], "n_chai_gt": int((d > 0).sum()), "n": len(d), "bonferroni_ci_m12": [bonf[1], bonf[2]], "per_entry_diff": dict(zip(ents, map(float, d)))}
     print("\n* = CI above 0 (Chai-1 better), v = CI below 0 (Cartesian better), blank = CI includes 0")
     return out
 

@@ -52,6 +52,31 @@ def fit_linear_diag(z0: torch.Tensor, z1: torch.Tensor, z_prev: torch.Tensor | N
     return beta[:, 0].float(), beta[:, 1].float(), beta[:, 2].float()
 
 
+RIDGE_GRID = (0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0)
+
+
+def fit_ridge_diag(z0: torch.Tensor, z1: torch.Tensor, c: float):
+    """Per-channel ridge regression z1_c = a_c + k_c z0_c with a COMMON absolute penalty lambda = c * mean_c(Sxx_c) on the centered slope
+    (scale-free in the strength c; c = 0 is plain OLS = fit_linear_diag). Returns (a, k)."""
+    z0d, z1d = z0.double(), z1.double()
+    m0, m1 = z0d.mean(0), z1d.mean(0)
+    x, y = z0d - m0, z1d - m1
+    sxx, sxy = (x * x).sum(0), (x * y).sum(0)
+    k = sxy / (sxx + c * sxx.mean()).clamp_min(1e-30)
+    return (m1 - k * m0).float(), k.float()
+
+
+def select_ridge_strength(tr0, tr1, va0, va1, grid=RIDGE_GRID) -> float:
+    """Pick c by validation MSE on held-in data (never the test fold)."""
+    best, best_c = float("inf"), grid[0]
+    for c in grid:
+        a, k = fit_ridge_diag(tr0, tr1, c)
+        mse = float(((a + k * va0 - va1) ** 2).mean())
+        if mse < best:
+            best, best_c = mse, c
+    return best_c
+
+
 def predict_linear_diag(z0, a, k0, z_prev=None, k1=None):
     out = a.unsqueeze(0) + k0.unsqueeze(0) * z0
     if z_prev is not None:

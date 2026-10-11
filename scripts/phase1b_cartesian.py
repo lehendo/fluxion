@@ -21,7 +21,7 @@ import numpy as np
 import torch
 from analysis.geometry import kabsch_align, pca_scores
 from analysis.mask import n_residues
-from analysis.probes import (fit_linear_diag, predict_linear_diag, fit_linear_full, predict_linear_full, train_mlp, row_sqerr)
+from analysis.probes import (fit_ridge_diag, select_ridge_strength, fit_linear_diag, predict_linear_diag, fit_linear_full, predict_linear_full, train_mlp, row_sqerr)
 from data_pipeline.dataset import LatentDataset, _REPLICA_RE
 
 LAGS = {"100ps": 1, "1ns": 10, "10ns": 100, "50ns": 500}          # in analysis steps
@@ -34,11 +34,16 @@ def probe_suite(tr_pairs, va_pairs, te_pairs, device="cpu", seed=0):
     a, k, _ = fit_linear_diag(z0, z1)
     A, b = fit_linear_full(z0, z1)
     alpha = float((z0 * z1).sum() / (z0 * z0).sum())
+    c_ridge = select_ridge_strength(a0, a1, v0, v1)                      # POST HOC diagnostic (log 2026-10-12): ridge per-channel linear
+    ar, kr = fit_ridge_diag(z0, z1, c_ridge)
     mlp, _, _ = train_mlp(a0, a1, v0, v1, hidden=128, batch_size=128, max_epochs=40, patience=5, device=device, seed=seed)
     with torch.no_grad():
         preds = {"identity": t0, "mean": mean_vec.expand_as(t1), "linear_diag": predict_linear_diag(t0, a, k),
-                 "linear_full": predict_linear_full(t0, A, b), "shrink": alpha * t0, "mlp": mlp(t0)}
-    return {n: float(((p - t1) ** 2).mean()) for n, p in preds.items()}
+                 "linear_full": predict_linear_full(t0, A, b), "shrink": alpha * t0, "mlp": mlp(t0),
+                 "linear_diag_ridge": ar + kr * t0}
+    out = {n: float(((p - t1) ** 2).mean()) for n, p in preds.items()}
+    out["_ridge_c"] = c_ridge
+    return out
 
 
 def main() -> None:
@@ -89,7 +94,8 @@ def main() -> None:
                 pred: {"mse": float(np.mean([f[lname][pred] for f in folds])),
                        "pct_vs_identity": float(100 * (1 - np.mean([f[lname][pred] for f in folds]) / np.mean([f[lname]["identity"] for f in folds]))),
                        "pct_vs_mean": float(100 * (1 - np.mean([f[lname][pred] for f in folds]) / np.mean([f[lname]["mean"] for f in folds])))}
-                for pred in folds[0][lname]}
+                for pred in folds[0][lname] if not pred.startswith("_")}
+            res["lags"][lname][name]["_ridge_c_per_fold"] = [f[lname]["_ridge_c"] for f in folds]
         print(f"[b1] {p}: {name} done", flush=True)
     a.out_dir.mkdir(parents=True, exist_ok=True)
     (a.out_dir / f"{p}.json").write_text(json.dumps(res))

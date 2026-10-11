@@ -322,3 +322,33 @@ class TestPCAScores:
         Xte = torch.randn(50, 30, generator=g) @ torch.diag(torch.linspace(3, 0.1, 30))
         S_all = pca_scores(Xtr, torch.cat([Xtr, Xte]), k=10)
         assert torch.allclose(S_all[:200], pca_scores(Xtr, Xtr, k=10), atol=1e-4)
+
+
+class TestRidgeDiag:
+    def test_c_zero_is_ols_and_slopes_shrink_monotonically(self):
+        import torch
+        from analysis.probes import fit_linear_diag, fit_ridge_diag
+        torch.manual_seed(0)
+        z0 = torch.randn(500, 6) * torch.tensor([3.0, 2.0, 1.0, 0.5, 0.2, 0.1]); z1 = 0.6 * z0 + 0.5 * torch.randn(500, 6)
+        a0, k0 = fit_ridge_diag(z0, z1, 0.0)
+        a_ols, k_ols, _ = fit_linear_diag(z0, z1)
+        assert torch.allclose(k0, k_ols, atol=1e-4) and torch.allclose(a0, a_ols, atol=1e-4)
+        norms = [fit_ridge_diag(z0, z1, c)[1].abs().sum().item() for c in (0.0, 0.1, 1.0, 10.0)]
+        assert all(x > y for x, y in zip(norms, norms[1:]))
+
+    def test_selection_prefers_regularization_when_data_are_scarce_and_noisy(self):
+        import torch
+        from analysis.probes import select_ridge_strength
+        torch.manual_seed(1)
+        d, n = 60, 40                                                   # many channels, few pairs: OLS slopes are mostly noise
+        tr0 = torch.randn(n, d); tr1 = 0.3 * tr0 + 1.0 * torch.randn(n, d)
+        va0 = torch.randn(400, d); va1 = 0.3 * va0 + 1.0 * torch.randn(400, d)
+        assert select_ridge_strength(tr0, tr1, va0, va1) > 0
+
+    def test_selection_prefers_ols_when_data_are_plentiful_and_clean(self):
+        import torch
+        from analysis.probes import select_ridge_strength
+        torch.manual_seed(2)
+        tr0 = torch.randn(20000, 4); tr1 = 0.8 * tr0 + 0.05 * torch.randn(20000, 4)
+        va0 = torch.randn(5000, 4); va1 = 0.8 * va0 + 0.05 * torch.randn(5000, 4)
+        assert select_ridge_strength(tr0, tr1, va0, va1) <= 0.01
