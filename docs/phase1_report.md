@@ -105,8 +105,14 @@ Paired difference (Chai-1 − Cartesian, % over identity; 95% CI over PDB entrie
 | per-channel linear, 8 | +3.69 [−1.94, +10.89] | −0.41 [−4.52, +4.36] | −3.35 [−7.61, +2.34] |
 | per-channel linear, 13 | **+7.10 [+2.10, +12.47]** | +4.35 [−0.32, +9.34] | +4.60 [−2.33, +12.90] |
 
-Supportable statement: *on the shrinkage-referenced comparison — shrinkage is the best probe in both spaces at every lag — frozen Chai-1 trunk latents and matched-dimension aligned-Cα PCA are indistinguishable at lags ≥ 100 ps (differences within about ±0.6 points at 13 proteins; CIs about ±4, so modest differences are not excluded).*
-The one cell favouring Chai-1 (per-channel linear, 100 ps, 13 proteins) concerns a probe that each space's own shrinkage baseline beats (Chai 4.6% vs shrinkage 10.9%; Cartesian −2.5% vs 10.4%); my reading is estimation noise of per-component slopes fit on ≈2000 pairs, which I have not tested.
+Supportable statement: *on the shrinkage-referenced comparison — shrinkage is the best probe in both spaces at every lag — frozen Chai-1 trunk latents and matched-dimension aligned-Cα PCA are indistinguishable at lags ≥ 100 ps (differences within about ±0.6 points at 13 proteins; CIs about ±4, so modest differences are not excluded).* The shrinkage row excludes 0 in no cell, under no correction.
+
+**The one cell that favours Chai-1 is not robust to the choice of multiple-comparison correction, and both corrections are reported.** Per-channel linear, 100 ps, 13 proteins: +7.10 [+2.10, +12.47] uncorrected. Bonferroni at m = 12 (the pre-specified trusted cells: {linear_diag, shrinkage} × 3 lags × 2 sets): [+0.08, +14.88], which survives by 0.08 points. At m = 18 (adding the six post hoc ridge cells): [−0.17, +15.28], which does not. Uncorrected, 8 of the 36 interpretable cells exclude 0 (6 favour Chai-1, 2 favour Cartesian), and the cells are strongly correlated. No favourable m is selected.
+
+**The ridge check, and its limits.** A ridge per-channel linear probe (strength chosen on a held-in replica) leaves the cell unchanged (+7.47 [+2.21, +13.10]), so "estimation noise from fitting ≈384 slopes" is not supported and is withdrawn as the explanation. The check was weaker than it looked: ridge shrinks slopes toward 0, but the appropriate null is the *shared shrinkage level* (α ≈ 0.7). The infinite-penalty limit toward that level is exactly the shrinkage row, which shows no difference at any lag or in either set; that is the cleaner argument. The validation replica also chose plain OLS in most folds and the top of the grid in many others (a bimodal choice).
+
+**One descriptive observation.** Per-channel linear loses less relative to shrinkage in Chai-1 space (10.9 → 4.6, −6.4 points) than in Cartesian PCA space (10.4 → −2.5, −12.9 points): Chai-1's per-component slopes transfer across replicas somewhat better. This is the only place the latents show any advantage; both are beaten by one scalar, so it does not rescue the premise that frozen trunk latents are a better dynamics space.
+
 Full-linear and MLP rows overfit in both spaces and are not used. Figure 4. This is **not** "no advantage for linear or MLP probes", which would be too broad.
 
 ## 6. Theory and the attenuation measurement
