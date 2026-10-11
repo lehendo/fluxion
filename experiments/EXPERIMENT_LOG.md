@@ -715,3 +715,20 @@ submitted to `secondary` with any GPU, started within minutes (on A40 / TeslaT4 
 restricted to H100 or A100 nodes (--constraint "H100|A100", bf16-capable, comparable to the A100-class nodes the 3a arms ran on): 3c = job 11315066 (4 h wall limit; the script requeues itself with the same options after a clean checkpoint at 225 min and resumes),
 diagnostic array = 11315067. No experimental setting changed; hardware class is nominally the same but not identical to the arms' (the 3a arms ran on ccc0388-class A100 nodes); a hardware difference can in principle change bf16 numerics, so the reproduction check of
 A_s0 / B_s0 against the logged arms is also a hardware-sensitivity check. The diagnostic's four conditions run on whatever H100/A100 node each array task gets; conditions are not segregated by hardware.
+
+=====================================================================================================================
+2026-10-11. RAW RESULTS, PRE-REGISTERED EVALUATION, MILESTONES 25% (step 1600) AND 75% (step 4800) (jobs 11312276, 11312277; results/phase3/eval_{025,075}.json; scripts/phase3_report.py). Numbers only; the 50% and 100% evaluations are still running (on a T4 node).
+Held-out = 4 entries (16pk, 1aol, 1bq8, 1bxy[A,B averaged]); shrinkage alpha = 0.7171 fitted on the training entries; flow-loss reduction = fraction of E||delta||^2 explained vs v = 0, each arm integrated against its OWN clamped t distribution;
+predicted (closed form, results/phase3/predictions.json): uniform 0.0541, beta 0.1025, ratio 1.89 (pass band [1.5, 2.3]).
+MILESTONE 75% (step 4800), PRIMARY, held-out attained flow-loss reduction [95% bootstrap CI over 4 entries]:
+  uniform EMA 0.0484 [0.0341, 0.0627]   raw 0.0532 [0.0361, 0.0702]      beta EMA 0.1054 [0.0830, 0.1279]   raw 0.0993 [0.0697, 0.1289]
+  ratio beta/uniform: EMA 2.178 [1.997, 2.604]   raw 1.868 [1.763, 2.060]
+  attained / predicted: uniform EMA 0.89, raw 0.98; beta EMA 1.03, raw 0.97
+MILESTONE 75%, DOWNSTREAM held-out one-step z0 + v(z0, 0.01), % over identity, mean over 4 entries [CI]: shrinkage +16.47 [+13.18, +19.50]; linear_diag +16.49;
+  uniform EMA +12.14 [+8.68, +15.61], raw +14.63 [+10.27, +18.99];  beta EMA +15.24 [+12.14, +18.34], raw +14.49 [+10.04, +18.93].
+  per entry (16pk, 1aol, 1bq8, 1bxy): shrinkage +19.20 +11.17 +15.72 +19.80; uniform raw +19.46 +10.96 +9.59 +18.52; beta raw +18.94 +9.42 +10.66 +18.92.
+  MODEL MINUS SHRINKAGE (points), mean [CI], entries positive: uniform EMA -4.33 [-6.86, -2.15] 0/4; uniform raw -1.84 [-4.65, +0.02] 1/4; beta EMA -1.23 [-2.08, -0.40] 0/4; beta raw -1.99 [-4.02, -0.57] 0/4.
+  8-step Euler from t=0 is far worse than one step: uniform raw +4.74, beta raw +5.04 (EMA +3.14, +3.13); model minus shrinkage about -11 to -13 points.
+  In-sample (training proteins; labelled) one-step EMA: uniform +13.25, beta +16.20 vs shrinkage +14.09.
+MILESTONE 25% (step 1600): flow-loss reduction EMA is NEGATIVE (uniform -0.0268, beta -0.1124; the EMA still averages in the collapse/early phase), raw positive but small: uniform 0.0065 [0.0042, 0.0086], beta 0.0306 [0.0225, 0.0410];
+  ratio beta/uniform raw 4.73 [4.28, 5.32]; the EMA ratio is undefined (negative denominator; the printed value and CI are meaningless). Downstream one-step raw: uniform +1.42, beta +4.18; EMA -2.49, -5.53; shrinkage +16.47. Model minus shrinkage negative in 0/4 entries for every variant.
