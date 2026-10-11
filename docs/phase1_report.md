@@ -14,7 +14,7 @@ and the value after the artifact is removed.
 | Bucket padding is a measurement artifact in AF2/AF3/Chai-1 trunk activations | **Survived, now contribution 1** | padding constants are per-shard and run-dependent (\|Δ\|² ≈ 3.9, comparable to real lag-1 displacement); 34–77% of tokens on the original held-out proteins; 50-point inflation of improvement-over-mean |
 | Baseline geometry: identity beats the mean below ≈1 ns, loses above; closed-form asymptotes confirmed | **Survived, contribution 2 (credibility anchor)** | sweep, asymptote check (Section 3) |
 | Short-lag latent predictability is mean reversion | **Survived** | α = 0.70 at 10 ps; full linear − shrinkage = −0.44 [−1.04, +0.06]; MLP worse (Section 4) |
-| Attenuation of the learnable signal under uniform-t CFM, 2.76× on matched inputs | **Survived, narrowed** | closed form + measurement (Section 6); the general principle is prior art (Section 8) |
+| Attenuation of the learnable signal under uniform-t CFM | **Survived; Phase 3 adds held-out evidence (see `docs/phase3_report.md`)** | closed-form f(t) predicts the measured f(t) without fitting (Phase 1: 2.76× on matched inputs); both 9M flow models reach the linear-optimal R(t) pointwise on held-out proteins (0.89–1.03 of prediction at milestone 75%); endpoint weighting speeds learning ≥ 7–12× on a monitor. The general principle is prior art (Section 8); the treatment/control flow-loss ratio is NOT an independent confirmation (it follows from the weightings once R(t) = f(t)) |
 | No learnability advantage of Chai-1 latents over Cartesian PCA | **Survived only in a narrow form** | indistinguishable on the shrinkage-referenced comparison; one per-channel-linear cell favours Chai-1 on the larger set (Section 5) |
 | C3: frozen trunk latents as a privileged dynamics space | **Falsified on the available evidence** | Sections 4–5 |
 | C1 midpoint vanishing as a new result | **Dead: prior art** (Midpoint Generative Models Prop 3.1, i.i.d. endpoints); ours is a one-line extension to exchangeable pairs | `docs/prior_art_search.md` |
@@ -134,6 +134,6 @@ Unread: appendices of 2506.13763, the last 88k characters of arXiv:2406.12839. "
 
 B2 (random-init trunk) not run. B3 rests on the 2026-08 code-review documentation (pre-fix latents purged). 6 proteins unverified. 50 ns not interpretable. All DiT numbers are in-sample. The 10 ps regime is untested by B1.
 
-## 10. Phase 3 (design; see the log for the pre-registration)
+## 10. Phase 3
 
-Phase 3's purpose is to test whether attenuation is the mechanism. 3a: one controlled change (t sampled toward the endpoints), a small DiT, held-out entries, compared against identity and shrinkage. The two-configuration limit means 3a's two arms use the whole configuration budget; 3b (conditional reformulation) moves to FUTURE_WORK.md unless the limit is lifted.
+See `docs/phase3_report.md` (draft; evaluations at 100% and 50%, the integration-step sweep, arm 3c and the stability diagnostic are pending).
