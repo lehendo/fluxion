@@ -76,6 +76,9 @@ def main() -> None:
     ap.add_argument("--min-lr-frac", type=float, default=0.1)
     ap.add_argument("--guard-ratio", type=float, default=2.0, help="halt if windowed train loss > this x windowed v=0 loss after warmup (0 disables)")
     ap.add_argument("--guard-window-samples", type=int, default=12800)
+    ap.add_argument("--guard-mode", choices=["halt", "record"], default="halt", help="halt = stop + sentinel (real runs); record = log the excursion and continue (stability diagnostic only)")
+    ap.add_argument("--t-mode", choices=["clamp", "truncate"], default="clamp")
+    ap.add_argument("--stop-after", type=int, default=0, help="stop (and write diagnostic_summary.json) after this many optimizer steps while keeping the --max-steps schedule (diagnostic only)")
     ap.add_argument("--t-clip", type=float, nargs=2, default=[0.01, 0.99])
     ap.add_argument("--gate-lr-multiplier", type=float, default=10.0)
     ap.add_argument("--weight-decay", type=float, default=1e-5)
@@ -139,7 +142,7 @@ def main() -> None:
         prog = (st - a.warmup_steps) / max(1, a.max_steps - a.warmup_steps)
         return a.min_lr_frac + (1 - a.min_lr_frac) * 0.5 * (1 + math.cos(math.pi * min(1.0, prog)))
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lr_factor)
-    matcher = FlowMatcher(t_dist=a.t_dist, beta_a=a.beta_a, beta_b=a.beta_b, t_clip=tuple(a.t_clip))
+    matcher = FlowMatcher(t_dist=a.t_dist, beta_a=a.beta_a, beta_b=a.beta_b, t_clip=tuple(a.t_clip), t_mode=a.t_mode)
     milestones = {int(round(a.max_steps * q)): int(100 * q) for q in (0.25, 0.5, 0.75, 1.0)}
 
     step, ck = 0, a.out_dir / "checkpoint.pt"
@@ -170,6 +173,7 @@ def main() -> None:
     loss_acc = v0_acc = gn_acc = 0.0; n_acc = 0
     guard_steps = max(1, a.guard_window_samples // (a.batch_size * a.accum))
     guard_win: deque = deque(maxlen=guard_steps)
+    trace, first_over, n_over, max_ratio, nonfinite_seen = [], None, 0, 0.0, False
     while step < a.max_steps:
         opt.zero_grad(set_to_none=True)
         step_loss = step_v0 = 0.0
@@ -184,13 +188,21 @@ def main() -> None:
         if a.guard_ratio > 0:
             nonfinite = not math.isfinite(step_loss)
             ratio = (sum(x for x, _ in guard_win) / max(1e-30, sum(y for _, y in guard_win))) if len(guard_win) == guard_steps else float("nan")
-            if nonfinite or (step + 1 > a.warmup_steps and ratio > a.guard_ratio):
+            over = nonfinite or (step + 1 > a.warmup_steps and ratio > a.guard_ratio)
+            if a.guard_mode == "record":
+                nonfinite_seen |= nonfinite
+                if step + 1 > a.warmup_steps and math.isfinite(ratio):
+                    max_ratio = max(max_ratio, ratio)
+                if over:
+                    n_over += 1; first_over = first_over or step + 1
+            elif over:
                 sentinel.write_text(json.dumps({"step": step + 1, "windowed_loss_over_v0": None if nonfinite else ratio, "nonfinite": nonfinite, "guard_ratio": a.guard_ratio,
                                                 "window_samples": guard_steps * a.batch_size * a.accum}))
                 print(f"[t3] DIVERGENCE GUARD: step {step + 1}, windowed loss / v=0 loss = {ratio:.3f} (limit {a.guard_ratio}), nonfinite={nonfinite}. Halting; sentinel written.", flush=True)
                 if not nonfinite:
                     save()
                 sys.exit(4)
+            trace.append((step + 1, step_loss, step_v0, ratio))
         gn = float(torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0))
         opt.step(); sched.step(); update_ema(ema, model, decay=a.ema_decay)
         step += 1; n_acc += 1; gn_acc += gn
@@ -202,6 +214,13 @@ def main() -> None:
             w.writerow([step, f"{loss_acc / n_acc:.6f}", f"{v0_acc / n_acc:.6f}", f"{red:.3f}", f"{sched.get_last_lr()[0]:.2e}", f"{gn_acc / n_acc:.5f}", f"{mon_ema:.3f}", f"{mon_raw:.3f}", f"{time.time() - t_start:.0f}"]); logf.flush()
             print(f"[t3] step {step} train loss {loss_acc / n_acc:.5f} (v=0: {v0_acc / n_acc:.5f}) live flow-loss reduction {red:+.2f}% | monitor held-out 1-step vs identity: ema {mon_ema:.2f}% raw {mon_raw:.2f}% ({time.time() - t_start:.0f}s)", flush=True)
             loss_acc = v0_acc = gn_acc = 0.0; n_acc = 0
+        if a.stop_after and step >= a.stop_after:
+            gn_final = gn
+            (a.out_dir / "guard_trace.csv").write_text("step,step_loss,step_v0,windowed_ratio\n" + "\n".join(f"{x},{y:.6f},{z:.6f},{r:.5f}" for x, y, z, r in trace))
+            (a.out_dir / "diagnostic_summary.json").write_text(json.dumps({"stop_after": a.stop_after, "seed": a.seed, "t_dist": a.t_dist, "t_mode": a.t_mode, "lr": a.lr, "guard_ratio": a.guard_ratio,
+                "window_samples": guard_steps * a.batch_size * a.accum, "max_windowed_ratio_after_warmup": max_ratio, "first_step_over": first_over, "n_steps_over": n_over,
+                "diverged": bool(n_over > 0 or nonfinite_seen), "nonfinite": nonfinite_seen}, indent=1))
+            save(); print(f"[t3] diagnostic stop at step {step}: max windowed ratio {max_ratio:.3f}, steps over {n_over}", flush=True); sys.exit(0)
         if step in milestones:
             save_milestone(milestones[step]); print(f"[t3] milestone {milestones[step]}% saved at step {step}", flush=True)
         if step % a.ckpt_interval == 0:

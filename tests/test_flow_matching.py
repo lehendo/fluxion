@@ -171,3 +171,20 @@ class TestReturnStats:
         expect = (((z1 - z0) ** 2)[:, :4]).mean(dim=(1, 2)).mean()
         assert torch.allclose(v0, expect)
         assert fm.compute_loss(Zero(), z0, z1, None, mask).dim() == 0       # default return unchanged
+
+
+class TestTruncateMode:
+    def test_truncate_has_no_point_masses_and_clamp_does(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        tr = FlowMatcher(t_dist="beta", beta_a=0.25, beta_b=0.25, t_clip=(0.01, 0.99), t_mode="truncate").sample_t(100000, "cpu")
+        cl = FlowMatcher(t_dist="beta", beta_a=0.25, beta_b=0.25, t_clip=(0.01, 0.99), t_mode="clamp").sample_t(100000, "cpu")
+        assert tr.min() >= 0.01 and tr.max() <= 0.99 and ((tr == 0.01) | (tr == 0.99)).sum() == 0
+        assert (cl == 0.01).float().mean() > 0.15
+        assert abs(tr.mean().item() - 0.5) < 0.01
+
+    def test_bad_mode_rejected(self):
+        import pytest
+        from training.flow_matching import FlowMatcher
+        with pytest.raises(ValueError):
+            FlowMatcher(t_clip=(0.01, 0.99), t_mode="reflect")

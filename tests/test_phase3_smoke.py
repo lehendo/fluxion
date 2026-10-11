@@ -182,3 +182,21 @@ class TestDivergenceGuard:
         monkeypatch.setattr(sys, "argv", self._argv(tmp_path, out, ["--guard-ratio", "0"]))
         t3.main()
         assert not (out / "HALTED_DIVERGENCE").exists()
+
+
+class TestDiagnosticMode:
+    def test_record_mode_continues_and_summarises(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        import training.train_t3 as t3
+        helper = TestDivergenceGuard()
+        out = tmp_path / "diag"
+        argv = helper._argv(tmp_path, out, ["--guard-ratio", "0.0001", "--guard-window-samples", "4", "--guard-mode", "record", "--stop-after", "6", "--t-dist", "beta", "--t-mode", "truncate"])
+        argv[argv.index("--max-steps") + 1] = "20"
+        monkeypatch.setattr(sys, "argv", argv)
+        with pytest.raises(SystemExit) as e:
+            t3.main()
+        assert e.value.code == 0                                                     # record mode does NOT halt with code 4
+        assert not (out / "HALTED_DIVERGENCE").exists()
+        s = json.loads((out / "diagnostic_summary.json").read_text())
+        assert s["stop_after"] == 6 and s["diverged"] is True and s["n_steps_over"] >= 1 and s["t_mode"] == "truncate"
+        assert len((out / "guard_trace.csv").read_text().splitlines()) == 7        # header + 6 steps

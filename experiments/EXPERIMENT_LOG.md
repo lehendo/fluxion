@@ -672,3 +672,29 @@ PROCESS OBSERVATION (recorded because a paper about unsupported claims should lo
  11. 'padding lowers gradient SNR by sqrt(real-token fraction)' (Arjun): not supported by the stated assumptions (see above).
  12. 'Beta(0.25,0.25) with a clip has 10.2% attainable gain' was true for a clamp and false (7.9%) for the truncation I first implemented: caught by computing both (mine).
  The pattern: mechanisms were asserted from framing and caught by checking against data or code. This list is part of the record.
+
+=====================================================================================================================
+2026-10-11. STABILITY DIAGNOSTIC PRE-REGISTRATION (the last Phase 3 compute; written BEFORE launch). Arjun approved it, expanded to decide between the two live hypotheses (boundary point mass vs learning rate), cap lifted to 15 GPU-hours.
+QUESTION. Why did the beta arm's loss jump to 2.19x the v=0 loss at step ~350 (peak LR)? Candidates: (H1) clamping puts 17.1% of draws at exactly t = 0.01 / 0.99 (boundary point masses on near-clean inputs); (H2) the peak LR / gate LR
+(5.657e-4 / 5.657e-3) is simply too high, with the t distribution incidental (the uniform arm had a smaller transient at step 250); (H3) seed luck.
+DESIGN: 4 conditions x 2 seeds x 600 optimizer steps, 8 runs. Everything as in the 3a arms (9.15M model, centered, real-token mask, same split, batch 256 = 8 x 32, warmup 350, cosine defined over 6400 steps so peak LR sits inside the window,
+EMA 0.999, clip 1.0), stopped after step 600 (--stop-after) with the schedule unchanged. Seeds 0 and 1 (seed 0 = the arms' seed: A seed 0 and B seed 0 REPRODUCE the uniform and beta arms up to step 600; a mismatch with the logged arms is itself
+a finding about run-to-run reproducibility).
+  A  uniform t, clamp [0.01, 0.99], peak LR 5.657e-4 (reference)           B  Beta(0.25,0.25), CLAMP, peak LR (reproduce)
+  C  Beta(0.25,0.25), TRUNCATE to [0.01, 0.99], peak LR (no boundary mass, endpoint weight kept at a reduced level)      D  Beta(0.25,0.25), clamp, HALF peak LR 2.828e-4 (gate LR halves with it; boundary mass kept)
+GUARD IN RECORD MODE: windowed (12,800-sample = 50-step) training loss / v=0 loss > 2 after warmup, or any non-finite loss, is RECORDED (diagnostic_summary.json, guard_trace.csv with the per-step trace) and the run continues. The halting guard stays in the trainer for real runs.
+DEFINITION: a run 'diverges' iff it records any step over the guard criterion (ratio > 2 after step 350, or non-finite). A CONDITION 'diverges' iff at least one of its two seeds does; if exactly one seed does, the condition is reported as SEED-DEPENDENT
+(supporting H3) and the reading below is provisional. Also reported for every run: the maximum windowed ratio, the first step over, grad-norm excursions, and the held-out monitor.
+READINGS, fixed in advance (A = uniform/peak, B = clamp/peak, C = truncate/peak, D = clamp/half LR; D 'does not diverge' = lower LR rescues):
+  R1  A no, B yes, C no, D no   -> boundary point mass implicated and LR is the lever: the clamp note becomes a TESTED claim.
+  R2  A no, B yes, C yes        -> endpoint concentration generally, not the clamp (truncation does not rescue): rewrite the note to say so (D tells whether lowering LR rescues it).
+  R3  A yes (any B, C), D no    -> the shared peak LR / gate LR is the cause and the t distribution is incidental: withdraw the clamp note entirely.
+      [Arjun's wording of this reading was 'B diverges, C diverges, D does not'. That alone does not make the t distribution incidental unless the uniform arm A also diverges at peak LR; if A does not and B, C do, endpoint
+       concentration matters AND lowering LR rescues it. The table above includes A so that the reading follows from the data.]
+  R4  A no, B yes, C no, D yes  -> boundary point mass implicated and halving LR does not rescue it; reported as such.
+  R5  nothing diverges (A-D)    -> the excursion is not reproducible at this horizon: report as a single observed transient with NO attribution.
+  R6  B does not diverge, anything else does -> the original beta excursion is not reproduced by B; report; interpret by which others diverge.
+  Mixed seeds in any key condition -> seed-dependent, provisional.
+No claim in docs/practitioner_notes.md goes beyond what the matching reading supports; the note keeps stating its evidence level.
+BUDGET. 8 runs x (600 steps x 256 samples / ~140 samples/s = ~18 min + startup) ~ 2.7 GPU-h. Training compute so far 7.24 (3a) + 3c (~3.5-4.0 expected, running) + ~2.7 = ~13.5-14.0 of the 15 GPU-hour cap.
+Evaluation compute (4 milestones x 2 arms, then 3c's) is additional to that figure and is NOT counted against the cap here; if Arjun counts it, the cap would be exceeded and that should be decided explicitly. This is the last Phase 3 training compute.

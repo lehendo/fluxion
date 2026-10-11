@@ -18,7 +18,7 @@ import torch.nn as nn
 
 class FlowMatcher:
     def __init__(self, eps: float = 1e-5, t_dist: str = "uniform", beta_a: float = 0.5, beta_b: float = 0.5,
-                 t_clip: tuple[float, float] | None = None):
+                 t_clip: tuple[float, float] | None = None, t_mode: str = "clamp"):
         """
         Args:
             eps: Small buffer to prevent numerical instability at t=0 and t=1
@@ -26,6 +26,8 @@ class FlowMatcher:
                     "beta" (t ~ Beta(beta_a, beta_b); the default 0.5/0.5 puts mass near t = 0 and t = 1).
                     Phase 3a of the TMLR work changes ONLY this. No importance reweighting is applied:
                     the loss is the same MSE, sampled at different t.
+            t_mode: "clamp" (default) or "truncate" - how t_clip is applied. "truncate" renormalizes the drawn distribution to [lo, hi] by rejection (no
+                    boundary point masses; the endpoint weight of the Beta is kept but reduced). Used only by the Phase 3 stability diagnostic.
             t_clip: optional (lo, hi). If given, t is CLAMPED to [lo, hi] after drawing (eps is then unused). This is a clamp, not a truncation:
                     the mass outside [lo, hi] becomes point masses at lo and hi (about 17% at each end for Beta(0.25, 0.25) with lo = 0.01, 1% for uniform).
                     (A first implementation truncated instead; that removes the endpoint mass and cuts the predicted attainable gain, see the log.)
@@ -37,7 +39,10 @@ class FlowMatcher:
         self._beta = torch.distributions.Beta(torch.tensor(float(beta_a)), torch.tensor(float(beta_b))) if t_dist == "beta" else None
         if t_clip is not None and not 0.0 <= t_clip[0] < t_clip[1] <= 1.0:
             raise ValueError(f"t_clip must satisfy 0 <= lo < hi <= 1, got {t_clip}")
+        if t_mode not in ("clamp", "truncate"):
+            raise ValueError(f"t_mode must be 'clamp' or 'truncate', got {t_mode!r}")
         self.t_clip = t_clip
+        self.t_mode = t_mode
 
     def _draw(self, B: int, device) -> torch.Tensor:
         return torch.rand((B,), device=device) if self._beta is None else self._beta.sample((B,)).to(device)
@@ -45,7 +50,15 @@ class FlowMatcher:
     def sample_t(self, B: int, device) -> torch.Tensor:
         if self.t_clip is None:
             return self._draw(B, device) * (1.0 - 2 * self.eps) + self.eps
-        return self._draw(B, device).clamp(self.t_clip[0], self.t_clip[1])
+        lo, hi = self.t_clip
+        t = self._draw(B, device)
+        if self.t_mode == "clamp":
+            return t.clamp(lo, hi)
+        bad = (t < lo) | (t > hi)
+        while bad.any():                                    # rejection sampling = truncation to [lo, hi]
+            t[bad] = self._draw(int(bad.sum()), device)
+            bad = (t < lo) | (t > hi)
+        return t
 
     def compute_loss(
         self,
