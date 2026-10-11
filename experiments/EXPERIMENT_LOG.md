@@ -708,3 +708,10 @@ PARTIAL OBSERVATION FROM ITS LOG (3 of 5 held-out proteins, milestone 100, one-s
   1bq8_A  shrinkage +15.72%   uniform +10.52%   beta +12.09%
 On 1bq8_A both arms are 3.6-5.2 points BELOW shrinkage, so 'the model is consistently a few tenths above shrinkage' is not what the partial data show: two proteins slightly above, one well below. The per-entry deltas, their CI over the 4 held-out entries and
 the sign count are reported when the evaluation completes; nothing is concluded from three proteins.
+
+=====================================================================================================================
+2026-10-11. QUEUE/HARDWARE CHANGE FOR 3c AND THE DIAGNOSTIC (logged because it is a protocol detail). Both were first submitted to IllinoisComputes-GPU, where the scheduler's start estimate was ~28 hours away (63 pending jobs); the milestone evaluations,
+submitted to `secondary` with any GPU, started within minutes (on A40 / TeslaT4 / RTXA6000 nodes, which also explains their slow speed). The pending IllinoisComputes submissions (11311773, 11312261) were CANCELLED and the same runs resubmitted on `secondary`
+restricted to H100 or A100 nodes (--constraint "H100|A100", bf16-capable, comparable to the A100-class nodes the 3a arms ran on): 3c = job 11315066 (4 h wall limit; the script requeues itself with the same options after a clean checkpoint at 225 min and resumes),
+diagnostic array = 11315067. No experimental setting changed; hardware class is nominally the same but not identical to the arms' (the 3a arms ran on ccc0388-class A100 nodes); a hardware difference can in principle change bf16 numerics, so the reproduction check of
+A_s0 / B_s0 against the logged arms is also a hardware-sensitivity check. The diagnostic's four conditions run on whatever H100/A100 node each array task gets; conditions are not segregated by hardware.
