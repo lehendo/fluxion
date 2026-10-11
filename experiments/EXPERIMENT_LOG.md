@@ -640,3 +640,35 @@ BOTH READINGS, STATED BEFORE LAUNCH (primary metric: held-out attained flow-loss
 CAVEATS STATED NOW. (1) At SNR < 1 more optimizer steps can still accumulate signal (3c gets 16x the steps of the uniform arm at an equal sample budget), so a null is SUGGESTIVE, not conclusive. (2) 3c varies batch together with the
 LR / warmup / EMA scalings tied to it; it is the batch-and-its-schedule effect, not batch alone. (3) 3c identifies at most one of the several differences listed in the 2026-10-11 outcome entry; even a Reading-P result leaves padding,
 centering, size, schedule and clamp differences unseparated, and a Reading-B result shows sufficiency of a small batch to block learning in the new setting, not that it was the cause in the original run. (4) One run, one seed.
+
+=====================================================================================================================
+2026-10-11. ANALYTICAL PADDING-SNR CALCULATION (no GPU; scripts/padding_snr.py, results/phase1/padding_snr.json). The question asked: does padding dilution compound with batch size, lowering the original run's SNR well below the 0.39 figure?
+TWO FACTS THAT CHANGE HOW THE QUESTION CAN BE ASKED.
+ (1) E3's 0.39 at batch 16 is NOT a 'batch-16-masked' figure. scripts/phase1_gradsnr.py uses collate_fn(pad_to=None) with batch size 1 per sample and the original FlowMatcher mask, which covers only positions beyond the bucket, so bucket padding counts as
+     real tokens. The measurement ALREADY INCLUDES padding. The calculation therefore asks what the SNR would be with padding masked (the reverse direction).
+ (2) A common rescaling of the gradient multiplies the signal AND the noise, so it leaves SNR unchanged. Padding dilutes each sample's gradient by its real-token fraction f (loss normalised by L_bucket tokens) - a rescaling - so the 'SNR falls by sqrt(f)'
+     formula does not follow from the stated assumptions (padded tokens give ~zero gradient). What changes SNR is (a) UNEQUAL per-sample weighting (samples from heavily padded proteins are down-weighted) and (b) extra noise from rare pairs that straddle
+     a shard boundary where the padding constant changes (|Delta|^2 large and irreducible).
+RESULTS (19 proteins, equal frame weights; real-token fraction f from 0.18 to 0.96, i.e. padding 4%-82%, mean padding 49%; the sqrt(mean f) formula would give 0.71):
+  weighting factor SNR_padded / SNR_masked: 0.897 if per-sample noise is homogeneous; 1.218 if noise variance scales as 1/N_real (token-independent noise). The SIGN depends on the noise model: down-weighting the many small, noisy proteins can help.
+  boundary-shift term (pooled over 6 measured proteins: pad constant changes at 11 of 360 shard boundaries (3.1%), padded-token MSE 2.07 at those pairs vs real-token step MSE 0.0066, one boundary per 500 frames; extra variance proportional to loss mass):
+      +3.1% of baseline gradient variance frame-weighted (up to +8.8% for the most padded protein).
+  Implied masked batch-16 SNR (measured padded 0.394): 0.44-0.45 under homogeneous noise (k* in samples ~80), 0.32-0.33 under token-independent noise (k* ~150); the sqrt(f) formula would give 0.55 (k* ~53).
+CONCLUSION (an estimate, assumptions in the script header, not a measurement): padding changes the original run's gradient SNR by roughly -12% to +20%, with an uncertain sign; it does NOT compound meaningfully with batch size, and masked batch 16 sits at about 0.3-0.45, still well below SNR = 1.
+So padding dilution is not shown to be a second contributor to the SNR account; the sqrt(f) factor is not supported. Padding still affects the loss/gradient SCALE (by f) and therefore interacts with Adam's epsilon (the original per-parameter gradient RMS was ~5e-8 vs eps 1e-8);
+that interaction is untested and is not claimed. No padding-unmasked arm is run (as decided); the question of whether padding matters for learning stays open and is part of the unseparated differences listed for 3c.
+
+PROCESS OBSERVATION (recorded because a paper about unsupported claims should log the instances it generated internally). Claims asserted ahead of the evidence in this project, who made them, and what caught them:
+  1. 'the old 89% is persistence' reconstruction (Arjun's brief, Correction 1): wrong in both directions; caught by the Step 0 ladder.
+  2. 'the ATLAS API is down for 5+ hours' (mine): a probe of the slow endpoint; caught by retrying with HTTP/1.1 and the analysis endpoint; retracted.
+  3. 'the optimal velocity field is zero' (theory draft): caught by the v_theta / headline measurements; withdrawn.
+  4. the DiT's 'held-out' score (pre-existing claim): in-sample; caught by reading the training script.
+  5. an earlier larger cost ratio for uniform-t (mismatched inputs): 2.76x on matched inputs.
+  6. 'Kernel-Stabilized FM states zero velocity under equal marginals' (a search tool's inference): not in the paper text read.
+  7. a quoted sentence in docs/novelty_assessment.md attributed to arXiv:2604.25244: not in the survey text.
+  8. 'estimation noise' as the reading of the B1 per-channel-linear cell (mine): tested by ridge; not supported; withdrawn.
+  9. 'the clamp caused the beta divergence' (Arjun): flagged as a hypothesis, one run, confounded with LR peak; a diagnostic is being run to decide it.
+ 10. 'k* = 25.8 microbatches means SNR = 1 at ~206 samples' (Arjun, microbatch misread as 8): the E3 JSON says 4 samples per microbatch, ~103 samples.
+ 11. 'padding lowers gradient SNR by sqrt(real-token fraction)' (Arjun): not supported by the stated assumptions (see above).
+ 12. 'Beta(0.25,0.25) with a clip has 10.2% attainable gain' was true for a clamp and false (7.9%) for the truncation I first implemented: caught by computing both (mine).
+ The pattern: mechanisms were asserted from framing and caught by checking against data or code. This list is part of the record.
