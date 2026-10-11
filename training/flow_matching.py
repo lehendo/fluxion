@@ -17,7 +17,8 @@ import torch.nn as nn
 
 
 class FlowMatcher:
-    def __init__(self, eps: float = 1e-5, t_dist: str = "uniform", beta_a: float = 0.5, beta_b: float = 0.5):
+    def __init__(self, eps: float = 1e-5, t_dist: str = "uniform", beta_a: float = 0.5, beta_b: float = 0.5,
+                 t_clip: tuple[float, float] | None = None):
         """
         Args:
             eps: Small buffer to prevent numerical instability at t=0 and t=1
@@ -25,16 +26,26 @@ class FlowMatcher:
                     "beta" (t ~ Beta(beta_a, beta_b); the default 0.5/0.5 puts mass near t = 0 and t = 1).
                     Phase 3a of the TMLR work changes ONLY this. No importance reweighting is applied:
                     the loss is the same MSE, sampled at different t.
+            t_clip: optional (lo, hi). If given, t is CLAMPED to [lo, hi] after drawing (eps is then unused). This is a clamp, not a truncation:
+                    the mass outside [lo, hi] becomes point masses at lo and hi (about 17% at each end for Beta(0.25, 0.25) with lo = 0.01, 1% for uniform).
+                    (A first implementation truncated instead; that removes the endpoint mass and cuts the predicted attainable gain, see the log.)
         """
         if t_dist not in ("uniform", "beta"):
             raise ValueError(f"t_dist must be 'uniform' or 'beta', got {t_dist!r}")
         self.eps = eps
         self.t_dist = t_dist
         self._beta = torch.distributions.Beta(torch.tensor(float(beta_a)), torch.tensor(float(beta_b))) if t_dist == "beta" else None
+        if t_clip is not None and not 0.0 <= t_clip[0] < t_clip[1] <= 1.0:
+            raise ValueError(f"t_clip must satisfy 0 <= lo < hi <= 1, got {t_clip}")
+        self.t_clip = t_clip
+
+    def _draw(self, B: int, device) -> torch.Tensor:
+        return torch.rand((B,), device=device) if self._beta is None else self._beta.sample((B,)).to(device)
 
     def sample_t(self, B: int, device) -> torch.Tensor:
-        u = torch.rand((B,), device=device) if self._beta is None else self._beta.sample((B,)).to(device)
-        return u * (1.0 - 2 * self.eps) + self.eps
+        if self.t_clip is None:
+            return self._draw(B, device) * (1.0 - 2 * self.eps) + self.eps
+        return self._draw(B, device).clamp(self.t_clip[0], self.t_clip[1])
 
     def compute_loss(
         self,
@@ -43,6 +54,7 @@ class FlowMatcher:
         z1: torch.Tensor,
         pair: torch.Tensor,
         padding_mask: torch.Tensor | None = None,
+        return_stats: bool = False,
     ) -> torch.Tensor:
         """
         Args:
@@ -73,7 +85,13 @@ class FlowMatcher:
             # Zero out padded positions; average only over valid tokens per sample.
             valid   = (~padding_mask).float().unsqueeze(-1)          # [B, L, 1]
             n_valid = valid.sum(dim=1).clamp(min=1.0)                # [B, 1] — clamp avoids 0/0
-            loss    = (loss * valid).sum(dim=(1, 2)) / (n_valid.squeeze(-1) * loss.shape[-1])
+            denom   = n_valid.squeeze(-1) * loss.shape[-1]
+            loss    = (loss * valid).sum(dim=(1, 2)) / denom
+            if return_stats:                                          # v = 0 loss on the same samples: the 'identity loss'
+                v0 = ((u_t.float() ** 2) * valid).sum(dim=(1, 2)) / denom
+                return loss.mean(), v0.mean()
             return loss.mean()
 
+        if return_stats:
+            return loss.mean(dim=(1, 2)).mean(), (u_t.float() ** 2).mean(dim=(1, 2)).mean()
         return loss.mean(dim=(1, 2)).mean()

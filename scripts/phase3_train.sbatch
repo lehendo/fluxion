@@ -1,9 +1,9 @@
 #!/bin/bash
 # TMLR Phase 3a: one arm per job. Usage:
 #   ARM=uniform T_DIST=uniform STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
-#   ARM=beta    T_DIST=beta BETA_A=0.5 BETA_B=0.5 STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
+#   ARM=beta    T_DIST=beta BETA_A=0.25 BETA_B=0.25 STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
 # On IllinoisComputes-GPU (3-day cap) override: sbatch --partition=IllinoisComputes-GPU --gres=gpu:1 --time=3-00:00:00 with TIME_LIMIT_MIN=4200.
-# Everything except --t-dist/--beta-* is identical between arms. Requeues itself (exit 3 = wall-clock checkpoint) until STEPS is reached.
+# MICRO x ACCUM = effective batch 256 (default 8 x 32). Everything except --t-dist/--beta-* is identical between arms. Requeues itself (exit 3 = wall-clock checkpoint) until STEPS is reached.
 #SBATCH --job-name=p3_train
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic
@@ -21,8 +21,8 @@ conda activate fluxion
 cd /u/arjunc4/fluxion
 export MALLOC_ARENA_MAX=2
 OUT=${OUT:-/scratch/arjunc4/fluxion_data/phase3/${ARM}}
-python training/train_t3.py --out-dir "$OUT" --t-dist "$T_DIST" --beta-a "${BETA_A:-0.5}" --beta-b "${BETA_B:-0.5}" \
-    --max-steps "$STEPS" --time-limit-min "${TIME_LIMIT_MIN:-225}" --num-workers 6
+python training/train_t3.py --out-dir "$OUT" --t-dist "$T_DIST" --beta-a "${BETA_A:-0.25}" --beta-b "${BETA_B:-0.25}" \
+    --max-steps "$STEPS" --batch-size "${MICRO:-8}" --accum "${ACCUM:-32}" --time-limit-min "${TIME_LIMIT_MIN:-225}" --num-workers 6
 rc=$?
 if [ $rc -eq 3 ]; then
     echo "[sbatch] wall-clock checkpoint, resubmitting"; sbatch --export=ALL "$0"

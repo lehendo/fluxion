@@ -77,6 +77,22 @@ class TestData:
         assert (zz0[:, L_BUCKET:] == 0).all()
 
 
+class TestArmMasses:
+    def test_masses_sum_to_one_and_have_clamp_point_masses(self):
+        import numpy as np
+        import scripts.phase3_eval as ev
+        for cfg, end in ((dict(dist="uniform", clip=[0.01, 0.99]), 0.01), (dict(dist="beta", beta_a=0.25, beta_b=0.25, clip=[0.01, 0.99]), 0.17)):
+            m = ev.arm_masses(cfg)
+            assert abs(m.sum() - 1) < 1e-9 and m[0] > end and abs(m[0] - m[-1]) < 1e-9
+        # attained reduction of a model that matches the closed-form curve must reproduce the prediction (same integral as scripts/phase3_predict.py)
+        from analysis.theory import f_closed_form
+        from scripts.phase3_predict import clamp_expect, ARMS
+        for name, cfg in (("uniform", dict(dist="uniform", clip=[0.01, 0.99])), ("beta(0.25,0.25)", dict(dist="beta", beta_a=0.25, beta_b=0.25, clip=[0.01, 0.99]))):
+            f = lambda x: f_closed_form(np.asarray(x, dtype=float), 0.695)
+            grid_val = float(ev.arm_masses(cfg) @ f(ev.T_GRID))
+            assert abs(grid_val - clamp_expect(ARMS[name], f, np.linspace(0.01, 0.99, 4001))) < 2e-3
+
+
 class TestEndToEnd:
     def test_train_resume_eval(self, tmp_path, monkeypatch):
         monkeypatch.setattr(phase3_data, "PAD_TO", 16)
@@ -91,12 +107,16 @@ class TestEndToEnd:
         for arm in ("uniform", "beta"):
             o = tmp_path / arm; out[arm] = o
             argv = ["train_t3", "--latents-dir", str(lat), "--meta-json", str(tmp_path / "meta.json"), "--mean-dir", str(meansd), "--out-dir", str(o),
-                    "--t-dist", arm, "--max-steps", "6", "--batch-size", "2", "--d-model", "32", "--n-layers", "1", "--n-heads", "2", "--d-ff", "64",
+                    "--t-dist", arm, "--max-steps", "6", "--batch-size", "2", "--accum", "2", "--d-model", "32", "--n-layers", "1", "--n-heads", "2", "--d-ff", "64",
                     "--num-workers", "0", "--log-interval", "2", "--monitor-interval", "4", "--ckpt-interval", "3", "--warmup-steps", "2",
                     "--proteins", "1aaa_A,1bbb_A,1ccc_A", "--held-out", "1ddd_A"]
             monkeypatch.setattr(sys, "argv", argv)
             t3.main()
             assert (o / "checkpoint.pt").exists() and torch.load(o / "checkpoint.pt", weights_only=False)["step"] == 6
+            assert sorted(q.name for q in o.glob("milestone_*.pt")) == ["milestone_025.pt", "milestone_050.pt", "milestone_075.pt", "milestone_100.pt"]
+            assert torch.load(o / "milestone_100.pt", weights_only=False)["t_cfg"]["clip"] == [0.01, 0.99]
+            log = (o / "loss_log.csv").read_text().splitlines()
+            assert log[0].startswith("step,train_loss,v0_loss,flow_reduction_pct") and len(log) >= 4
         # resume: re-running with the same max-steps is a no-op that keeps the step
         monkeypatch.setattr(sys, "argv", argv)
         t3.main()
@@ -113,5 +133,8 @@ class TestEndToEnd:
             assert k not in r["summary"]["held_out"]                              # identity is the reference, not a row
         assert {"shrink", "linear_diag", "dit_uniform_ema_n1", "dit_beta_raw_n8"} <= set(r["summary"]["held_out"])
         # on a stationary AR(1) with rho = 0.7 the fitted shrinkage must beat identity and alpha must be near 0.7
+        fs = r["flow_summary"]["held_out"]
+        assert {"uniform_ema", "beta_ema", "uniform_raw", "beta_raw", "ratio_ema"} <= set(fs)
+        assert fs["ratio_ema"]["point"] > 0 and len(r["t_grid"]) == 41
         assert 0.55 < r["alpha"] < 0.85
         assert r["summary"]["in_sample"]["shrink"][0] > 5

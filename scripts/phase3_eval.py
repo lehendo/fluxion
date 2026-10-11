@@ -8,7 +8,10 @@ method and both arms). Methods, all scored on the same frames:
   shrink              z1_hat = alpha * z0, alpha = sum(z0 z1)/sum(z0 z0) fitted on the TRAINING entries only
   linear_diag         per-channel OLS fitted on the TRAINING entries only
   dit_<arm>_<ema|raw>_n<1|8>   z1_hat = Euler integration of the trained velocity field from t=0 with 1 or 8 steps
-Reported as % improvement over identity: 100 * (1 - MSE_method / MSE_identity), per protein, then mean over the held-out entries
+PRIMARY (pre-registered) TEST, flow-loss space: on a fixed grid of 41 t values in [0.01, 0.99] the flow-loss reduction of each model,
+R(t) = 1 - L_model(t) / L(v = 0), pooled over the sampled held-out frames of a protein; each arm's ATTAINED reduction is the integral of R against that arm's own
+t-sampling distribution (Beta draws clamped to [0.01, 0.99], point masses included); the measured treatment/control ratio is compared with the closed-form
+prediction in results/phase3/predictions.json (scripts/phase3_predict.py). DOWNSTREAM readout: Reported as % improvement over identity: 100 * (1 - MSE_method / MSE_identity), per protein, then mean over the held-out entries
 (proteins of one entry averaged first) with a percentile bootstrap CI over entries (4 held-out entries: coarse, stated as such).
 The same is reported on the TRAINING proteins as an in-sample column (labelled in-sample).
 """
@@ -18,12 +21,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import torch
+from scipy import stats
 from torch.utils.data import DataLoader
 
 from training.dit_model import FluxionDiT
 from training.phase3_data import PAD_TO, build_datasets, collate, entry_of, load_pair_store
 
 N_FRAMES = 400
+N_FRAMES_IN_SAMPLE = 100
+T_LO, T_HI = 0.01, 0.99
+T_GRID = np.linspace(T_LO, T_HI, 41)
+
+
+def arm_masses(t_cfg: dict, grid: np.ndarray = T_GRID) -> np.ndarray:
+    """Probability mass of the CLAMPED sampling distribution assigned to each grid point (cell between midpoints; the clamp point masses go to the end cells)."""
+    lo, hi = t_cfg["clip"]
+    d = stats.uniform() if t_cfg["dist"] == "uniform" else stats.beta(t_cfg["beta_a"], t_cfg["beta_b"])
+    edges = np.concatenate([[lo], (grid[1:] + grid[:-1]) / 2, [hi]])
+    m = np.diff(d.cdf(edges))
+    m[0] += d.cdf(lo); m[-1] += 1 - d.cdf(hi)
+    return m / m.sum()
 
 
 def load_models(ckpt_path: Path, dev):
@@ -31,14 +48,14 @@ def load_models(ckpt_path: Path, dev):
     out = {}
     for name, key in (("ema", "ema"), ("raw", "model")):
         m = FluxionDiT(**st["arch"]); m.load_state_dict(st[key]); out[name] = m.to(dev).eval()
-    return out, st["step"]
+    return out, st["step"], st.get("t_cfg")
 
 
 @torch.no_grad()
 def integrate(model, z0, pairs_b, mask, steps: int):
     z = z0
     for k in range(steps):
-        t = torch.full((z.shape[0],), k / steps, device=z.device)
+        t = torch.full((z.shape[0],), max(k / steps, T_LO), device=z.device)         # never below the smallest t the model was trained at
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=z.is_cuda):
             z = z + model(z, pairs_b, t, mask).float() / steps
     return z
@@ -65,6 +82,26 @@ def fit_baselines(train_ds: dict, dev, seed: int):
     k = (S["sxy"] / S["n"] - mx * my) / (S["sxx"] / S["n"] - mx * mx)
     a = my - k * mx
     return alpha, a.float().to(dev), k.float().to(dev)
+
+
+@torch.no_grad()
+def flow_loss_curves(ds, pairs, models, dev, seed: int, n_frames: int):
+    """Per model: sum of squared error at each grid t, and the v=0 sum, over real tokens. Returns {model: R(t) array}, using ONE fixed set of frames and fixed noise-free t grid."""
+    num = {m: np.zeros(len(T_GRID)) for m in models}; den = 0.0
+    g = torch.Generator().manual_seed(seed)
+    idx = torch.randperm(len(ds), generator=g)[:n_frames].tolist()
+    for batch in DataLoader([ds[i] for i in idx], batch_size=8, shuffle=False, collate_fn=collate):
+        z0, z1, pi, mask = (x.to(dev) for x in batch)
+        valid = (~mask).float().unsqueeze(-1); pb = pairs[pi]; u = z1 - z0
+        den += float(((u ** 2) * valid).sum())
+        for ti, t in enumerate(T_GRID):
+            tt = torch.full((z0.shape[0],), float(t), device=dev)
+            zt = (1 - float(t)) * z0 + float(t) * z1
+            for mname, m in models.items():
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=dev.type == "cuda"):
+                    v = m(zt, pb, tt, mask).float()
+                num[mname][ti] += float((((v - u) ** 2) * valid).sum())
+    return {m: (1 - n / den).tolist() for m, n in num.items()}
 
 
 @torch.no_grad()
@@ -112,14 +149,17 @@ def main() -> None:
     print(f"[eval] alpha (training entries) = {alpha:.4f}", flush=True)
     arms = {}
     for name, ck in a.arm:
-        arms[name] = load_models(Path(ck), dev); print(f"[eval] arm {name}: step {arms[name][1]}", flush=True)
-    res = {"alpha": alpha, "arms_steps": {n: v[1] for n, v in arms.items()}, "per_protein": {}}
+        arms[name] = load_models(Path(ck), dev); print(f"[eval] arm {name}: step {arms[name][1]} t_cfg {arms[name][2]}", flush=True)
+    res = {"alpha": alpha, "arms_steps": {n: v[1] for n, v in arms.items()}, "t_cfg": {n: v[2] for n, v in arms.items()}, "t_grid": T_GRID.tolist(), "per_protein": {}, "flow": {}}
     for group, dss in (("held_out", ho), ("in_sample", tr)):
         for p, ds in dss.items():
             row = {}
             first = True
-            for name, (models, _) in arms.items():
+            for name, (models, _, _) in arms.items():
                 r = score_protein(ds, pairs, models, alpha, ba, bk, dev, a.seed, name)
+                fl = flow_loss_curves(ds, pairs, models, dev, a.seed, N_FRAMES if group == "held_out" else N_FRAMES_IN_SAMPLE)
+                for mname, curve in fl.items():
+                    res["flow"].setdefault(f"{group}:{p}", {})[f"{name}_{mname}"] = curve
                 if first:
                     row.update({k: v for k, v in r.items() if not k.startswith("dit_")}); first = False
                 row.update({k: v for k, v in r.items() if k.startswith("dit_")})
@@ -135,8 +175,35 @@ def main() -> None:
         summary[group] = {m: boot([np.mean([r[m] for r in rs]) for rs in ents.values()]) for m in methods}
         summary[group]["_n_entries"] = len(ents)
     res["summary"] = summary
+    # ---- primary test: attained flow-loss reduction per arm and the treatment/control ratio
+    flow_summary = {}
+    for group in ("held_out", "in_sample"):
+        ents = {}
+        for key in res["flow"]:
+            if key.split(":")[0] == group:
+                ents.setdefault(entry_of(key.split(":")[1]), []).append(res["flow"][key])
+        fs = {}
+        for name, (_, _, tcfg) in arms.items():
+            if tcfg is None:
+                continue
+            w = arm_masses(tcfg)
+            for mname in ("ema", "raw"):
+                per_entry = [float(np.mean([w @ np.array(r[f"{name}_{mname}"]) for r in rs])) for rs in ents.values()]
+                fs[f"{name}_{mname}"] = {"attained_reduction": boot(per_entry), "per_entry": per_entry}
+        for mname in ("ema", "raw"):
+            if "uniform_" + mname in fs and "beta_" + mname in fs:
+                tu, tb = np.array(fs["uniform_" + mname]["per_entry"]), np.array(fs["beta_" + mname]["per_entry"])
+                rng = np.random.default_rng(0); ix = rng.integers(0, len(tu), (20000, len(tu)))
+                rat = tb[ix].mean(1) / np.maximum(tu[ix].mean(1), 1e-12)
+                fs["ratio_" + mname] = {"point": float(tb.mean() / tu.mean()), "ci95": [float(np.percentile(rat, 2.5)), float(np.percentile(rat, 97.5))]}
+        flow_summary[group] = fs
+    res["flow_summary"] = flow_summary
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(res, indent=1))
+    for group, fs in flow_summary.items():
+        print(f"\n=== PRIMARY: attained flow-loss reduction (fraction of E||delta||^2), {group}, each arm integrated against its own t distribution ===")
+        for k, v in fs.items():
+            print(f"  {k:24s} " + (f"{v['attained_reduction'][0]:.4f} [{v['attained_reduction'][1]:.4f}, {v['attained_reduction'][2]:.4f}]" if 'attained_reduction' in v else f"{v['point']:.3f} [{v['ci95'][0]:.3f}, {v['ci95'][1]:.3f}]"))
     for group in summary:
         print(f"\n=== {group}: % improvement over identity, mean over {summary[group]['_n_entries']} entries [95% bootstrap CI over entries] ===")
         for m, v in summary[group].items():

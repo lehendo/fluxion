@@ -132,3 +132,42 @@ class TestTDistribution:
         from training.flow_matching import FlowMatcher
         with pytest.raises(ValueError):
             FlowMatcher(t_dist="logit")
+
+
+class TestClippedT:
+    def test_clamp_gives_point_masses_at_the_bounds(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        t = FlowMatcher(t_dist="beta", beta_a=0.25, beta_b=0.25, t_clip=(0.01, 0.99)).sample_t(100000, "cpu")
+        assert t.min() >= 0.01 and t.max() <= 0.99
+        assert abs((t == 0.01).float().mean().item() - 0.17) < 0.01 and abs((t == 0.99).float().mean().item() - 0.17) < 0.01   # Beta(.25,.25) CDF(0.01) = 0.17
+        assert abs(t.mean().item() - 0.5) < 0.01
+
+    def test_clamped_uniform(self):
+        from training.flow_matching import FlowMatcher
+        torch.manual_seed(0)
+        t = FlowMatcher(t_clip=(0.01, 0.99)).sample_t(100000, "cpu")
+        assert abs((t == 0.01).float().mean().item() - 0.01) < 0.003 and t.min() >= 0.01 and t.max() <= 0.99
+
+    def test_bad_range_rejected(self):
+        import pytest
+        from training.flow_matching import FlowMatcher
+        with pytest.raises(ValueError):
+            FlowMatcher(t_clip=(0.6, 0.4))
+
+
+class TestReturnStats:
+    def test_v0_loss_is_zero_predictor_loss_and_default_unchanged(self):
+        from training.flow_matching import FlowMatcher
+        class Zero(torch.nn.Module):
+            def forward(self, z, pair, t, mask):
+                return torch.zeros_like(z)
+        torch.manual_seed(0)
+        z0, z1 = torch.randn(4, 6, 3), torch.randn(4, 6, 3)
+        mask = torch.zeros(4, 6, dtype=torch.bool); mask[:, 4:] = True
+        fm = FlowMatcher()
+        loss, v0 = fm.compute_loss(Zero(), z0, z1, None, mask, return_stats=True)
+        assert torch.allclose(loss, v0)                                     # a zero predictor attains exactly its own v=0 loss
+        expect = (((z1 - z0) ** 2)[:, :4]).mean(dim=(1, 2)).mean()
+        assert torch.allclose(v0, expect)
+        assert fm.compute_loss(Zero(), z0, z1, None, mask).dim() == 0       # default return unchanged
