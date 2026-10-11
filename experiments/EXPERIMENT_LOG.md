@@ -532,3 +532,16 @@ Reason for revision: Arjun's decisions after the benchmark, plus the E3 table's 
   (b) STEP 500 CHECK: report to Arjun both arms' live flow-loss reduction and held-out monitor. If neither arm's live reduction exceeds 1% by step 500, flag it immediately; continuing or stopping is Arjun's decision
       (500 steps is inside the end of warmup, so this is a flag, not an automatic kill).
   3b (conditional p(z1|z0)) goes to FUTURE_WORK.md unrun; two arms are the whole configuration budget.
+
+=====================================================================================================================
+2026-10-12. B1 ANOMALOUS CELL: PRE-REGISTERED RIDGE CHECK AND COMPARISON COUNT (post hoc diagnostic, requested in review; written BEFORE it runs).
+Cell: per-channel linear, 100 ps, 13-protein set, Chai-1 minus Cartesian = +7.10 [+2.10, +12.47]. Current reading, UNTESTED: estimation noise from ~384 slopes fit on ~2000 pairs.
+TEST: a ridge per-channel linear probe (common absolute penalty lambda = c * mean(Sxx) on the centered slope; c chosen from {0, .01, .03, .1, .3, 1, 3, 10} by validation MSE on a held-in replica, never the test fold;
+analysis/probes.py fit_ridge_diag / select_ridge_strength, unit-tested) is added to the identical B1 pipeline and the 13 proteins are re-run into results/phase1/b1_ridge (the original JSONs are not overwritten).
+Integrity check first: the re-run must reproduce the original linear_diag, shrink and identity numbers (same seeds); a mismatch > 0.01 percentage points is reported before anything else.
+DECISION RULE, stated in advance. If the overfitting reading is right, ridge should pull BOTH spaces' per-channel linear toward the shrinkage level and the paired difference for linear_diag_ridge should shrink toward 0
+(95% CI including 0). If the ridge difference remains >= +5 with a 95% CI above 0 at 100 ps, the overfitting reading is NOT supported and the cell stands as stated. Intermediate outcomes are reported as intermediate.
+The cell is not dropped under either outcome.
+COMPARISON COUNT. B1 grid as reported: lags {100 ps, 1 ns, 10 ns, 50 ns} x predictor rows {linear_diag, linear_full, shrink, mlp, mean, id/mean} x protein sets {8, 13} = 48 displayed cells (36 at interpretable lags).
+The claim rests on 12 pre-specified TRUSTED cells: {linear_diag, shrink} x {100 ps, 1 ns, 10 ns} x {8-set, 13-set}; the ridge row adds 6 (m = 18 with it). Bonferroni-corrected CIs use m = 12 (99.58% level) and are printed beside every
+cell by scripts/phase1b_report.py. The report states how many of the 36 interpretable cells exclude 0 uncorrected, for both directions.
