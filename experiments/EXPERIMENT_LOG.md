@@ -732,3 +732,10 @@ MILESTONE 75%, DOWNSTREAM held-out one-step z0 + v(z0, 0.01), % over identity, m
   In-sample (training proteins; labelled) one-step EMA: uniform +13.25, beta +16.20 vs shrinkage +14.09.
 MILESTONE 25% (step 1600): flow-loss reduction EMA is NEGATIVE (uniform -0.0268, beta -0.1124; the EMA still averages in the collapse/early phase), raw positive but small: uniform 0.0065 [0.0042, 0.0086], beta 0.0306 [0.0225, 0.0410];
   ratio beta/uniform raw 4.73 [4.28, 5.32]; the EMA ratio is undefined (negative denominator; the printed value and CI are meaningless). Downstream one-step raw: uniform +1.42, beta +4.18; EMA -2.49, -5.53; shrinkage +16.47. Model minus shrinkage negative in 0/4 entries for every variant.
+
+=====================================================================================================================
+2026-10-11. SECOND EVALUATION JOB FAILURE (mine): WALL-LIMIT KILL. The 50% and 100% milestone evaluations (jobs 11312275, 11312274) were submitted on `secondary` (4 h cap) with an eval that wrote its JSON only at the very end, and they landed on a TeslaT4
+node (ccc0287, ~2.5-3x slower than the A40/A6000 nodes the 25% and 75% evals used). At 3 h 58 min they had scored all 5 held-out proteins and 1 of 13 in-sample proteins; they will be killed at 4 h with nothing saved. I attempted `scontrol update TimeLimit`
+(permission denied for a user). ~7.9 GPU-hours (T4) of evaluation are lost. FIXES: scripts/phase3_eval.py now saves a partial JSON after every protein, resumes from it, and writes a COMPLETE held-out JSON before starting the in-sample part
+(tested: tests/test_phase3_smoke.py::TestEvalResume); the evals are resubmitted (11319184 = 100%, 11319185 = 50%) restricted to A40/RTXA6000/A30/A100/H100 nodes (no T4). The wall limit and the end-only write were an avoidable design error in my sbatch.
+Evaluation GPU-hours so far (counting the lost T4 runs): 25% (1.23 h) + 75% (0.98 h) + crashed 11311553 (0.43 h) + the two killed T4 jobs (~8.0 h) = ~10.6 h, plus the reruns.
