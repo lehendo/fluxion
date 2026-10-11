@@ -200,3 +200,29 @@ class TestDiagnosticMode:
         s = json.loads((out / "diagnostic_summary.json").read_text())
         assert s["stop_after"] == 6 and s["diverged"] is True and s["n_steps_over"] >= 1 and s["t_mode"] == "truncate"
         assert len((out / "guard_trace.csv").read_text().splitlines()) == 7        # header + 6 steps
+
+
+class TestEvalResume:
+    def test_partial_resume_and_early_heldout_json(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        import training.train_t3 as t3
+        import scripts.phase3_eval as ev
+        helper = TestDivergenceGuard()
+        proteins = ["1aaa_A", "1bbb_A"]
+        out = tmp_path / "arm"
+        argv = helper._argv(tmp_path, out, ["--guard-ratio", "0"])
+        monkeypatch.setattr(sys, "argv", argv); t3.main()
+        lat = tmp_path / "latents"; meansd = tmp_path / "mean"
+        monkeypatch.setattr(ev, "N_FRAMES", 4); monkeypatch.setattr(ev, "N_FRAMES_IN_SAMPLE", 4)
+        res = tmp_path / "res.json"
+        cmd = ["phase3_eval", "--latents-dir", str(lat), "--meta-json", str(tmp_path / "meta.json"), "--mean-dir", str(meansd), "--arm", "uniform", str(out / "checkpoint.pt"), "--out", str(res)]
+        monkeypatch.setattr(sys, "argv", cmd); ev.main()
+        full = json.loads(res.read_text()); part = res.with_suffix(".partial.json")
+        assert part.exists() and set(json.loads(part.read_text())["per_protein"]) == {"held_out:1bbb_A", "in_sample:1aaa_A"}
+        # simulate a kill after the held-out group: keep only held-out in the partial file, delete the final JSON, then resume
+        d = json.loads(part.read_text()); d["per_protein"] = {k: v for k, v in d["per_protein"].items() if k.startswith("held_out")}; d["flow"] = {k: v for k, v in d["flow"].items() if k.startswith("held_out")}
+        part.write_text(json.dumps(d)); res.unlink()
+        monkeypatch.setattr(sys, "argv", cmd); ev.main()
+        again = json.loads(res.read_text())
+        assert set(again["per_protein"]) == set(full["per_protein"])
+        assert again["per_protein"]["held_out:1bbb_A"]["pct_vs_identity"] == full["per_protein"]["held_out:1bbb_A"]["pct_vs_identity"]     # resumed protein not recomputed

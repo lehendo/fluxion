@@ -162,8 +162,55 @@ def main() -> None:
     for name, ck in a.arm:
         arms[name] = load_models(Path(ck), dev); print(f"[eval] arm {name}: step {arms[name][1]} t_cfg {arms[name][2]}", flush=True)
     res = {"alpha": alpha, "arms_steps": {n: v[1] for n, v in arms.items()}, "t_cfg": {n: v[2] for n, v in arms.items()}, "t_grid": T_GRID.tolist(), "per_protein": {}, "flow": {}}
+    def finalize():
+        summary = {}
+        for group in [g for g in ("held_out", "in_sample") if any(v["group"] == g for v in res["per_protein"].values())]:
+            ents = {}
+            for key, v in res["per_protein"].items():
+                if v["group"] == group:
+                    ents.setdefault(entry_of(key.split(":")[1]), []).append(v["pct_vs_identity"])
+            methods = next(iter(ents.values()))[0].keys()
+            summary[group] = {m: boot([np.mean([r[m] for r in rs]) for rs in ents.values()]) for m in methods}
+            summary[group]["_n_entries"] = len(ents)
+        res["summary"] = summary
+        # ---- primary test: attained flow-loss reduction per arm and the treatment/control ratio
+        flow_summary = {}
+        for group in [g for g in ("held_out", "in_sample") if any(k.split(":")[0] == g for k in res["flow"])]:
+            ents = {}
+            for key in res["flow"]:
+                if key.split(":")[0] == group:
+                    ents.setdefault(entry_of(key.split(":")[1]), []).append(res["flow"][key])
+            fs = {}
+            for name, (_, _, tcfg) in arms.items():
+                if tcfg is None:
+                    continue
+                w = arm_masses(tcfg)
+                for mname in ("ema", "raw"):
+                    per_entry = [float(np.mean([w @ np.array(r[f"{name}_{mname}"]) for r in rs])) for rs in ents.values()]
+                    fs[f"{name}_{mname}"] = {"attained_reduction": boot(per_entry), "per_entry": per_entry}
+            for mname in ("ema", "raw"):
+                for other in [n for n in arms if n != "uniform"]:
+                    if "uniform_" + mname in fs and f"{other}_" + mname in fs:
+                        tu, tb = np.array(fs["uniform_" + mname]["per_entry"]), np.array(fs[f"{other}_" + mname]["per_entry"])
+                        rng = np.random.default_rng(0); ix = rng.integers(0, len(tu), (20000, len(tu)))
+                        rat = tb[ix].mean(1) / np.maximum(tu[ix].mean(1), 1e-12)
+                        fs[f"ratio_{other}_over_uniform_" + mname] = {"point": float(tb.mean() / tu.mean()), "ci95": [float(np.percentile(rat, 2.5)), float(np.percentile(rat, 97.5))]}
+            flow_summary[group] = fs
+        res["flow_summary"] = flow_summary
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        a.out.write_text(json.dumps(res, indent=1))
+        return summary, flow_summary
+
+    partial = a.out.with_suffix(".partial.json")
+    if partial.exists():                                              # resume: skip proteins already scored (the job can be killed at a wall limit)
+        old = json.loads(partial.read_text())
+        if old.get("arms_steps") == res["arms_steps"] and abs(old.get("alpha", -1) - alpha) < 1e-9:
+            res["per_protein"], res["flow"] = old["per_protein"], old["flow"]
+            print(f"[eval] resumed {len(res['per_protein'])} proteins from {partial}", flush=True)
     for group, dss in (("held_out", ho), ("in_sample", tr)):
         for p, ds in dss.items():
+            if f"{group}:{p}" in res["per_protein"]:
+                continue
             row = {}
             first = True
             for name, (models, _, _) in arms.items():
@@ -176,43 +223,11 @@ def main() -> None:
                 row.update({k: v for k, v in r.items() if k.startswith("dit_")})
             close_handles(ds)
             res["per_protein"][f"{group}:{p}"] = {"group": group, "mse": row, "pct_vs_identity": {k: 100 * (1 - v / row["identity"]) for k, v in row.items() if k != "identity"}}
+            partial.write_text(json.dumps({"alpha": alpha, "arms_steps": res["arms_steps"], "per_protein": res["per_protein"], "flow": res["flow"]}))
+            if group == "held_out" and all(f"held_out:{q}" in res["per_protein"] for q in ho):
+                finalize()                                          # a complete held-out JSON exists before the slow in-sample part starts
             print(f"[eval] {group} {p}: " + "  ".join(f"{k}={100 * (1 - v / row['identity']):+.2f}%" for k, v in row.items() if k in ("shrink", "linear_diag") or k.endswith("_ema_n1")), flush=True)
-    summary = {}
-    for group in ("held_out", "in_sample"):
-        ents = {}
-        for key, v in res["per_protein"].items():
-            if v["group"] == group:
-                ents.setdefault(entry_of(key.split(":")[1]), []).append(v["pct_vs_identity"])
-        methods = next(iter(ents.values()))[0].keys()
-        summary[group] = {m: boot([np.mean([r[m] for r in rs]) for rs in ents.values()]) for m in methods}
-        summary[group]["_n_entries"] = len(ents)
-    res["summary"] = summary
-    # ---- primary test: attained flow-loss reduction per arm and the treatment/control ratio
-    flow_summary = {}
-    for group in ("held_out", "in_sample"):
-        ents = {}
-        for key in res["flow"]:
-            if key.split(":")[0] == group:
-                ents.setdefault(entry_of(key.split(":")[1]), []).append(res["flow"][key])
-        fs = {}
-        for name, (_, _, tcfg) in arms.items():
-            if tcfg is None:
-                continue
-            w = arm_masses(tcfg)
-            for mname in ("ema", "raw"):
-                per_entry = [float(np.mean([w @ np.array(r[f"{name}_{mname}"]) for r in rs])) for rs in ents.values()]
-                fs[f"{name}_{mname}"] = {"attained_reduction": boot(per_entry), "per_entry": per_entry}
-        for mname in ("ema", "raw"):
-            for other in [n for n in arms if n != "uniform"]:
-                if "uniform_" + mname in fs and f"{other}_" + mname in fs:
-                    tu, tb = np.array(fs["uniform_" + mname]["per_entry"]), np.array(fs[f"{other}_" + mname]["per_entry"])
-                    rng = np.random.default_rng(0); ix = rng.integers(0, len(tu), (20000, len(tu)))
-                    rat = tb[ix].mean(1) / np.maximum(tu[ix].mean(1), 1e-12)
-                    fs[f"ratio_{other}_over_uniform_" + mname] = {"point": float(tb.mean() / tu.mean()), "ci95": [float(np.percentile(rat, 2.5)), float(np.percentile(rat, 97.5))]}
-        flow_summary[group] = fs
-    res["flow_summary"] = flow_summary
-    a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_text(json.dumps(res, indent=1))
+    summary, flow_summary = finalize()
     for group, fs in flow_summary.items():
         print(f"\n=== PRIMARY: attained flow-loss reduction (fraction of E||delta||^2), {group}, each arm integrated against its own t distribution ===")
         for k, v in fs.items():
