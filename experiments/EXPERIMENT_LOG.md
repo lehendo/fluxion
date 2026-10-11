@@ -566,3 +566,25 @@ WEAKNESSES OF THE CHECK ITSELF (stated because the check came out 'the cell stan
 READING (revised): per-channel linear loses less relative to shrinkage in Chai-1 space (10.91 -> 4.56, -6.4 points) than in Cartesian PCA space (10.36 -> -2.53, -12.9 points): Chai-1's per-component slopes transfer across
 replicas somewhat better than Cartesian PCA slopes do. Both are beaten by one scalar. This is a descriptive difference in a probe nobody should use; it is not support for 'Chai-1 latents are a better dynamics space', and it
 is not robust to multiplicity correction at m = 18. 'Estimation noise' as the explanation is not supported and is withdrawn as the stated reading.
+
+=====================================================================================================================
+2026-10-11. PHASE 3a: BOTH ARMS COMPLETED UNATTENDED; TWO PRE-REGISTERED CONDITIONS FIRED AND WERE NOT ACTED ON IN REAL TIME. (results/phase3/loss_log_{uniform,beta}.csv, config_*.json)
+WHAT HAPPENED. Both arms were submitted 2026-10-12-ish and started after a queue wait; my scheduled polls could not run (usage-limit pause) and by the time I resumed both arms had finished all 6,400 steps
+(uniform 11,720 s = 3.26 GPU-h; beta 14,310 s = 3.98 GPU-h; total 7.24 of 12 GPU-hours; evaluations not yet counted). No step-500 check and no stop-condition check was performed in real time. Reading the logs afterwards:
+(1) STOP CONDITION (a) FIRED in the BETA arm. Around step 350 (the end of warmup, LR at its 5.66e-4 peak, gate LR 5.66e-3) the training loss jumped to 2.19x the v=0 loss (max ratio after warmup 2.19; the logged
+    10-step window at step 350 shows flow-loss reduction -665.8%, grad norm 0.72 vs ~0.002 normally). Before it, the beta arm had been LEARNING FAST: live flow-loss reduction 2.4% at step 150, 8.4% at step 200, 10.0% at 250,
+    10.2% at 300, and the raw-weights held-out one-step monitor 15.3% at step 200 and 17.1% at step 300 (EMA lagging). After the spike the arm sat at ~0% (loss = v=0 loss, i.e. collapsed to ~zero velocity) from step ~400 to ~1000,
+    then re-learned: 0.4% at 1000, 3.5% at 1600, 11.8% at 3200, 12.8% at 4800, 14.2% at 6400. The pre-registered action was: stop that arm, log the fix, restart from scratch. That did NOT happen.
+(2) STEP-500 FLAG CONDITION HELD: neither arm's live reduction exceeded 1% at step 500 (uniform +0.035%, beta -0.004%; held-out EMA monitors -20.3% and -9.6%, raw -0.05% and -0.05%). Not raised in real time.
+(3) The UNIFORM arm had a smaller transient (step 250: -2.3% window, grad norm 0.012) that stayed under the 2x criterion; it learned slowly: live reduction first > 1% at step 1890 and > 5% at step 2860;
+    5.3% at 3200, 7.3% at 4800, 8.5% at 6400 (live, in-sample, last window; 9.1% at step 6390).
+(4) Final held-out one-step-vs-identity monitor (16 pairs per held-out protein, a monitor not the pre-registered evaluation): uniform EMA 17.5% / raw 17.2%; beta EMA 16.7% / raw 14.9%.
+CAVEATS ON THESE NUMBERS. The live flow-loss reductions are on TRAINING batches (in-sample) and exceed the LINEAR-attainable predictions (uniform 5.4-5.5%, beta 10.3-10.4%): either the 9M model beats the linear estimator, or in-sample fitting
+inflates them; the pre-registered held-out evaluation decides. The live ratio of final windows is 14.17/8.51 = 1.67 (noisy single windows) vs the predicted 1.89. Both arms are therefore ABOVE ZERO and the interpretation table's rows
+'both > 0' apply provisionally; nothing here is the pre-registered test.
+CONSEQUENCE FOR VALIDITY. The two arms did not experience the same optimization: the beta arm diverged at the LR peak and re-learned from a collapsed state, the uniform arm did not diverge. The A/B comparison is therefore confounded by an
+instability that is not part of the t-distribution effect. Whether the beta arm's recovered final state is comparable to a clean run is NOT known. Options (Arjun's decision, NOT taken by me): (A) report the arms as run, with the divergence
+documented as part of the result; (B) restart BOTH arms with a pre-registered fix (e.g. lower peak LR or gate LR multiplier, or longer warmup): ~7.2 GPU-hours, which together with the 7.24 already used exceeds the 12 GPU-hour cap, so
+it needs the cap lifted; (C) restart only the beta arm (~4 GPU-h, total ~11.2 + evaluations): the arms would then differ in optimizer settings unless the fix is neutral to the uniform arm. None is launched.
+EVALUATIONS (pre-registered protocol: flow-loss R(t) on a 41-point grid, attained reduction under each arm's own clamped distribution, ratio vs 1.89; downstream vs identity and shrinkage; at 25/50/75/100%) are QUEUED
+(jobs 11311533 on IllinoisComputes-GPU, 11311553-56 on secondary, one per milestone); they will be run on the checkpoints as they stand regardless of (A)/(B)/(C), so that the data exists either way.
