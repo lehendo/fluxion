@@ -3,6 +3,7 @@
 #   ARM=uniform T_DIST=uniform STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
 #   ARM=beta    T_DIST=beta BETA_A=0.25 BETA_B=0.25 STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
 # On IllinoisComputes-GPU (3-day cap) override: sbatch --partition=IllinoisComputes-GPU --gres=gpu:1 --time=3-00:00:00 with TIME_LIMIT_MIN=4200.
+# EXTRA_ARGS: extra trainer flags (arm 3c: --lr 1.414e-4 --warmup-steps 5600 --ema-decay 0.99994 --ckpt-interval 2000 --monitor-interval 1600 --log-interval 160).
 # MICRO x ACCUM = effective batch 256 (default 8 x 32). Everything except --t-dist/--beta-* is identical between arms. Requeues itself (exit 3 = wall-clock checkpoint) until STEPS is reached.
 #SBATCH --job-name=p3_train
 #SBATCH --partition=secondary
@@ -22,8 +23,11 @@ cd /u/arjunc4/fluxion
 export MALLOC_ARENA_MAX=2
 OUT=${OUT:-/scratch/arjunc4/fluxion_data/phase3/${ARM}}
 python training/train_t3.py --out-dir "$OUT" --t-dist "$T_DIST" --beta-a "${BETA_A:-0.25}" --beta-b "${BETA_B:-0.25}" \
-    --max-steps "$STEPS" --batch-size "${MICRO:-8}" --accum "${ACCUM:-32}" --time-limit-min "${TIME_LIMIT_MIN:-225}" --num-workers 6
+    --max-steps "$STEPS" --batch-size "${MICRO:-8}" --accum "${ACCUM:-32}" --time-limit-min "${TIME_LIMIT_MIN:-225}" --num-workers 6 ${EXTRA_ARGS}
 rc=$?
+if [ $rc -eq 4 ]; then
+    echo "[sbatch] DIVERGENCE GUARD HALT (sentinel HALTED_DIVERGENCE written); not requeueing"; exit 4
+fi
 if [ $rc -eq 3 ]; then
     echo "[sbatch] wall-clock checkpoint, resubmitting"; sbatch --export=ALL "$0"
 fi

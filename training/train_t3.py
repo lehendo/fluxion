@@ -10,6 +10,11 @@ Effective batch 256 by gradient accumulation (micro-batch --batch-size x --accum
 live flow-loss reduction (1 - loss / loss_of_v=0 on the training batches) logged every --log-interval optimizer steps, and milestone checkpoints at
 25/50/75/100% of the run for the intermediate evaluations. (Batch 256 because the E3 gradient-SNR measurement gives SNR = 1 at about 103 samples.)
 
+IN-RUN DIVERGENCE GUARD (added after the beta arm of the first 3a runs diverged unattended): after warmup, if the training loss averaged over the last
+--guard-window-samples samples exceeds --guard-ratio x the v=0 loss over the same batches (or any step loss is non-finite), the trainer checkpoints, writes the sentinel
+file <out-dir>/HALTED_DIVERGENCE (JSON: step, ratio) and exits with code 4. The sbatch wrapper does not requeue on 4, and a restart refuses to run while the sentinel exists.
+Stop conditions never depend on an external poller.
+
 Checkpoints atomically every --ckpt-interval steps and resumes from <out-dir>/checkpoint.pt, so a 4 h partition cap
 costs at most one interval. A monitor line reports the held-out 1-step improvement over identity (learning curve only;
 the pre-registered evaluation is scripts/phase3_eval.py).
@@ -24,6 +29,7 @@ import math
 import os
 import sys
 import time
+from collections import deque
 from copy import deepcopy
 from pathlib import Path
 
@@ -68,6 +74,8 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=32, help="micro-batches per optimizer step (effective batch = batch-size x accum)")
     ap.add_argument("--lr", type=float, default=1e-4 * (256 / 8) ** 0.5, help="peak LR: 1e-4 at batch 8 scaled by sqrt(256/8) = 5.657e-4")
     ap.add_argument("--min-lr-frac", type=float, default=0.1)
+    ap.add_argument("--guard-ratio", type=float, default=2.0, help="halt if windowed train loss > this x windowed v=0 loss after warmup (0 disables)")
+    ap.add_argument("--guard-window-samples", type=int, default=12800)
     ap.add_argument("--t-clip", type=float, nargs=2, default=[0.01, 0.99])
     ap.add_argument("--gate-lr-multiplier", type=float, default=10.0)
     ap.add_argument("--weight-decay", type=float, default=1e-5)
@@ -91,12 +99,19 @@ def main() -> None:
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(a.seed)
     a.out_dir.mkdir(parents=True, exist_ok=True)
+    sentinel = a.out_dir / "HALTED_DIVERGENCE"
+    if sentinel.exists():
+        print(f"[t3] {sentinel} exists: a previous run halted on divergence; refusing to start. Log the fix and remove the sentinel deliberately.", flush=True)
+        sys.exit(4)
     pilot = [p.name for p in sorted(a.latents_dir.iterdir()) if p.is_dir() and (p / "manifest.json").exists()]
-    train_p, held_p = split_proteins(pilot)
-    if a.proteins:
-        train_p = a.proteins.split(",")
-    if a.held_out:
-        held_p = a.held_out.split(",")
+    if a.proteins and a.held_out:                      # smoke tests only: explicit lists, no split computed
+        train_p, held_p = a.proteins.split(","), a.held_out.split(",")
+    else:
+        train_p, held_p = split_proteins(pilot)
+        if a.proteins:
+            train_p = a.proteins.split(",")
+        if a.held_out:
+            held_p = a.held_out.split(",")
     all_p = train_p + held_p
     index_of = {p: i for i, p in enumerate(all_p)}
     ns = torch.load(a.latents_dir / "norm_stats.pt", weights_only=True)
@@ -153,14 +168,29 @@ def main() -> None:
     model.train()
     it = iter(loader)
     loss_acc = v0_acc = gn_acc = 0.0; n_acc = 0
+    guard_steps = max(1, a.guard_window_samples // (a.batch_size * a.accum))
+    guard_win: deque = deque(maxlen=guard_steps)
     while step < a.max_steps:
         opt.zero_grad(set_to_none=True)
+        step_loss = step_v0 = 0.0
         for _ in range(a.accum):
             z0, z1, pi, mask = (x.to(dev, non_blocking=True) for x in next(it))
             with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=dev.type == "cuda"):
                 loss, v0 = matcher.compute_loss(model, z0, z1, pairs[pi], mask, return_stats=True)
             (loss / a.accum).backward()
-            loss_acc += loss.item() / a.accum; v0_acc += v0.item() / a.accum
+            step_loss += loss.item() / a.accum; step_v0 += v0.item() / a.accum
+        loss_acc += step_loss; v0_acc += step_v0
+        guard_win.append((step_loss, step_v0))
+        if a.guard_ratio > 0:
+            nonfinite = not math.isfinite(step_loss)
+            ratio = (sum(x for x, _ in guard_win) / max(1e-30, sum(y for _, y in guard_win))) if len(guard_win) == guard_steps else float("nan")
+            if nonfinite or (step + 1 > a.warmup_steps and ratio > a.guard_ratio):
+                sentinel.write_text(json.dumps({"step": step + 1, "windowed_loss_over_v0": None if nonfinite else ratio, "nonfinite": nonfinite, "guard_ratio": a.guard_ratio,
+                                                "window_samples": guard_steps * a.batch_size * a.accum}))
+                print(f"[t3] DIVERGENCE GUARD: step {step + 1}, windowed loss / v=0 loss = {ratio:.3f} (limit {a.guard_ratio}), nonfinite={nonfinite}. Halting; sentinel written.", flush=True)
+                if not nonfinite:
+                    save()
+                sys.exit(4)
         gn = float(torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0))
         opt.step(); sched.step(); update_ema(ema, model, decay=a.ema_decay)
         step += 1; n_acc += 1; gn_acc += gn

@@ -191,11 +191,12 @@ def main() -> None:
                 per_entry = [float(np.mean([w @ np.array(r[f"{name}_{mname}"]) for r in rs])) for rs in ents.values()]
                 fs[f"{name}_{mname}"] = {"attained_reduction": boot(per_entry), "per_entry": per_entry}
         for mname in ("ema", "raw"):
-            if "uniform_" + mname in fs and "beta_" + mname in fs:
-                tu, tb = np.array(fs["uniform_" + mname]["per_entry"]), np.array(fs["beta_" + mname]["per_entry"])
-                rng = np.random.default_rng(0); ix = rng.integers(0, len(tu), (20000, len(tu)))
-                rat = tb[ix].mean(1) / np.maximum(tu[ix].mean(1), 1e-12)
-                fs["ratio_" + mname] = {"point": float(tb.mean() / tu.mean()), "ci95": [float(np.percentile(rat, 2.5)), float(np.percentile(rat, 97.5))]}
+            for other in [n for n in arms if n != "uniform"]:
+                if "uniform_" + mname in fs and f"{other}_" + mname in fs:
+                    tu, tb = np.array(fs["uniform_" + mname]["per_entry"]), np.array(fs[f"{other}_" + mname]["per_entry"])
+                    rng = np.random.default_rng(0); ix = rng.integers(0, len(tu), (20000, len(tu)))
+                    rat = tb[ix].mean(1) / np.maximum(tu[ix].mean(1), 1e-12)
+                    fs[f"ratio_{other}_over_uniform_" + mname] = {"point": float(tb.mean() / tu.mean()), "ci95": [float(np.percentile(rat, 2.5)), float(np.percentile(rat, 97.5))]}
         flow_summary[group] = fs
     res["flow_summary"] = flow_summary
     a.out.parent.mkdir(parents=True, exist_ok=True)

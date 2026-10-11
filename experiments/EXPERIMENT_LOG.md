@@ -616,3 +616,27 @@ PROCESS FINDING (mine and Arjun's): a pre-registered stop condition fired and no
 halt if windowed training loss > 2x the windowed v = 0 loss after warmup) on the logged runs: it would have fired on the beta arm at step 360 (max windowed ratio 2.70) and never on the uniform arm (max 1.0003).
 BUDGET (Arjun's decision): Option A for the existing arms (report as run; the beta speed observation precedes the divergence; both arms had ~5,000 steps after recovery to converge). Two-configuration limit lifted and the cap raised to 14 GPU-hours for
 exactly ONE more arm (3c). Used so far: 7.24 GPU-h of training; evaluations are additional.
+
+=====================================================================================================================
+2026-10-11. ARM 3c PRE-REGISTRATION (written BEFORE launch). Question now: which of the changes between the original 192k run and the new uniform arm unblocked learning? 3c isolates ONE of them: the BATCH SIZE.
+DESIGN. Identical to the UNIFORM arm of 3a in every respect (9.15M-parameter FluxionDiT, centered coordinates, real-residue mask, same 13/5 split, uniform t clamped to [0.01, 0.99], seed 0 so identical initialization and the same
+sample sequence) except the batch size and the settings that are tied to it:
+  batch 16 (micro-batch 8 x 2 accumulation); peak LR 5.657e-4 x sqrt(16/256) = 1.414e-4 (square-root scaling down from the batch-256 setting; gate LR multiplier x10 unchanged); warmup 5,600 steps (= the 89,600 samples of the
+  uniform arm's 350-step warmup); cosine to 10% of peak; EMA decay 0.99994 (= 0.999 per 256 samples, matching the EMA's sample horizon); MATCHED SAMPLE BUDGET: 102,400 steps = 1.638M samples (6,400 x 256 / 16), the same as the uniform arm.
+  (Arjun's message estimated ~66,000 steps; that is 1.06M samples, i.e. 65% of the uniform arm's budget. The rule stated was 'matched sample budget rather than step budget', which is 102,400 steps; that is what is run.)
+COST. The uniform arm ran 1.638M samples in 11,720 s (139.8 samples/s, 3.26 GPU-h; the earlier 84 samples/s figure was conservative). 3c has 16x more optimizer steps, so extra per-step overhead (clip, AdamW, EMA over 9M parameters)
+is expected: estimate 3.5-4.0 GPU-h. Used so far 7.24; with 3c <= ~11.3 of the 14 GPU-hour cap (Arjun lifted the cap from 12 to 14 and the two-configuration limit for exactly this one arm); evaluations are additional.
+GUARD. The in-run divergence guard is ON (halt if the windowed training loss over the last 12,800 samples exceeds 2x the windowed v = 0 loss after warmup, or any non-finite loss; sentinel file HALTED_DIVERGENCE; exit code 4; no requeue).
+Replay on the logged 3a runs: fires on the beta arm at step 360, never on the uniform arm. A guard halt is a result to report, not a failure to re-run.
+LOGGING. Live flow-loss reduction, train loss and the held-out monitor are logged at the same sample spacing as the uniform arm (log every 160 steps = 2,560 samples; monitor every 1,600 steps = 25,600 samples). Milestones at 25/50/75/100%.
+The pre-registered evaluation (scripts/phase3_eval.py) is run on 3c's milestones with the SAME protocol and against the uniform arm's numbers. Live numbers are never reported as results.
+BOTH READINGS, STATED BEFORE LAUNCH (primary metric: held-out attained flow-loss reduction R_3c vs R_uniform from the pre-registered evaluation at the 100% milestone, with the held-out one-step improvement over identity as the downstream check):
+  READING B (batch/SNR was A blocker): R_3c <= 0.2 x R_uniform AND held-out one-step improvement over identity <= 3%. In this setting batch 16 is sufficient to prevent learning at a matched sample budget; this supports (but does
+    not prove) the analytical E3 explanation of the original null.
+  READING P (NOT the batch): R_3c >= 0.7 x R_uniform AND downstream within 30% of the uniform arm. Padding dilution, centering, model size, schedule or another difference unblocked learning, and the SNR account of the original null is
+    WRONG as an explanation; this is reported as such. 3c cannot discriminate among those remaining candidates.
+  INTERMEDIATE (0.2-0.7 x): batch matters but is not the sole blocker; reported as partial.
+  Speed readout (held-out monitor, samples-to-first->1%): the uniform arm needed 1400 steps x 256 = 358k samples. If 3c is more than 3x slower in samples, batch affects speed even when it does not change the endpoint.
+CAVEATS STATED NOW. (1) At SNR < 1 more optimizer steps can still accumulate signal (3c gets 16x the steps of the uniform arm at an equal sample budget), so a null is SUGGESTIVE, not conclusive. (2) 3c varies batch together with the
+LR / warmup / EMA scalings tied to it; it is the batch-and-its-schedule effect, not batch alone. (3) 3c identifies at most one of the several differences listed in the 2026-10-11 outcome entry; even a Reading-P result leaves padding,
+centering, size, schedule and clamp differences unseparated, and a Reading-B result shows sufficiency of a small batch to block learning in the new setting, not that it was the cause in the original run. (4) One run, one seed.

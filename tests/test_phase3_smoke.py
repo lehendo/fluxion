@@ -134,7 +134,51 @@ class TestEndToEnd:
         assert {"shrink", "linear_diag", "dit_uniform_ema_n1", "dit_beta_raw_n8"} <= set(r["summary"]["held_out"])
         # on a stationary AR(1) with rho = 0.7 the fitted shrinkage must beat identity and alpha must be near 0.7
         fs = r["flow_summary"]["held_out"]
-        assert {"uniform_ema", "beta_ema", "uniform_raw", "beta_raw", "ratio_ema"} <= set(fs)
-        assert fs["ratio_ema"]["point"] > 0 and len(r["t_grid"]) == 41
+        assert {"uniform_ema", "beta_ema", "uniform_raw", "beta_raw", "ratio_beta_over_uniform_ema"} <= set(fs)
+        assert fs["ratio_beta_over_uniform_ema"]["point"] > 0 and len(r["t_grid"]) == 41
         assert 0.55 < r["alpha"] < 0.85
         assert r["summary"]["in_sample"]["shrink"][0] > 5
+
+
+class TestDivergenceGuard:
+    def _argv(self, tmp_path, out, extra):
+        proteins = ["1aaa_A", "1bbb_A"]
+        lat = make_store(tmp_path, proteins)
+        meansd = tmp_path / "mean"; meansd.mkdir()
+        ns = torch.load(lat / "norm_stats.pt", weights_only=True)
+        for p in proteins:
+            torch.save(per_position_mean(LatentDataset(lat, p, load_pair=False, norm_stats=ns, lag=1), 1), meansd / f"{p}.pt")
+        return ["train_t3", "--latents-dir", str(lat), "--meta-json", str(tmp_path / "meta.json"), "--mean-dir", str(meansd), "--out-dir", str(out), "--t-dist", "uniform",
+                "--max-steps", "8", "--batch-size", "2", "--accum", "1", "--d-model", "32", "--n-layers", "1", "--n-heads", "2", "--d-ff", "64", "--num-workers", "0",
+                "--log-interval", "2", "--monitor-interval", "1000", "--warmup-steps", "2", "--proteins", "1aaa_A", "--held-out", "1bbb_A"] + extra
+
+    def test_guard_halts_writes_sentinel_and_blocks_restart(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        import training.train_t3 as t3
+        out = tmp_path / "g"
+        # a ratio limit of 1e-4 is exceeded by any model that is not near-perfect: the guard must trip right after warmup
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, out, ["--guard-ratio", "0.0001", "--guard-window-samples", "4"]))
+        with pytest.raises(SystemExit) as e:
+            t3.main()
+        assert e.value.code == 4
+        info = json.loads((out / "HALTED_DIVERGENCE").read_text())
+        assert info["step"] >= 3 and info["windowed_loss_over_v0"] > 0.0001
+        with pytest.raises(SystemExit) as e2:                         # a restart refuses while the sentinel exists
+            t3.main()
+        assert e2.value.code == 4
+
+    def test_guard_silent_on_a_healthy_run(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        import training.train_t3 as t3
+        out = tmp_path / "h"
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, out, ["--guard-ratio", "50", "--guard-window-samples", "4"]))
+        t3.main()
+        assert not (out / "HALTED_DIVERGENCE").exists() and torch.load(out / "checkpoint.pt", weights_only=False)["step"] == 8
+
+    def test_guard_can_be_disabled(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        import training.train_t3 as t3
+        out = tmp_path / "d"
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, out, ["--guard-ratio", "0"]))
+        t3.main()
+        assert not (out / "HALTED_DIVERGENCE").exists()
