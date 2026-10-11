@@ -480,3 +480,55 @@ cap), identical for both arms. 100,000 steps x batch 8 = 800k samples ~ 2 passes
 within the cap if Arjun prefers a longer run. Batch size is part of the shared optimizer settings (8); a larger batch would raise per-step gradient SNR (k* = 25.8 microbatches of 4 samples at the old checkpoint)
 and is a legitimate knob to decide together with the t-distribution, identical across arms.
 NO ARM HAS BEEN LAUNCHED. Waiting on the open decision (treatment t-distribution; step count and batch size).
+
+=====================================================================================================================
+2026-10-12. PHASE 3a PRE-REGISTRATION, REVISED (supersedes the 2026-10-11 entry's success criterion, batch size, step count and treatment distribution; written BEFORE any arm is launched).
+Reason for revision: Arjun's decisions after the benchmark, plus the E3 table's implication for batch size.
+
+(1) FACT CHECKS FROM THIS REVIEW, recorded plainly.
+  * Original run's effective batch CONFIRMED from its config: scripts/train_full_run.sh launches torchrun --nproc_per_node=4 with --batch-size 4 (DDP, gradients averaged) => effective batch 16; peak LR 1e-4, gate LR 1e-3
+    (visible in the job logs train_full_10279682 / 10642653). This matches what E3 assumed (k = 4 microbatches of 4).
+  * Arithmetic correction: in E3 one microbatch = 4 samples, so k* = 25.8 microbatches = ~103 SAMPLES, not 206. SNR(n samples) = 0.0985 * sqrt(n): n = 8: 0.28; n = 16 (the original run): 0.39 (measured); n = 103: 1.00;
+    n = 256: 1.58. So the original run sat at 0.39 (not 0.28), and batch 8 would sit at 0.28. The conclusion drawn from this is unchanged: batch 8 would invalidate 3a; batch 256 puts both arms above SNR = 1 on this measure.
+  * Caveats on E3 as a design input: it was measured at the ORIGINAL run's final (collapsed) checkpoint with raw 40M weights; gradient signal at initialization or for the new 9M models can differ. The pre-stated verdict of E3 stays 'AMBIGUOUS' (4 < k* <= 64).
+    The SNR account of the original run's 0% is ANALYTICAL; Phase 3a is what tests it. The original 192k run is NOT a data point in any Phase 3a comparison (40M vs 9M parameters, different padding handling, uncentered
+    coordinates, no held-out split): it must not appear as the low-batch end of a trend, and the write-up must say so.
+
+(2) DESIGN (identical across arms except the t distribution).
+  Batch 256 by gradient accumulation (micro-batch 8 x 32); peak LR 1e-4 x sqrt(256/8) = 5.657e-4 (square-root scaling from the batch-8 setting; gate-parameter LR multiplier x10 as in the original, i.e. 5.657e-3);
+  AdamW (betas 0.9/0.999, wd 1e-5), linear warmup 350 optimizer steps then cosine decay to 10% of peak at the final step; grad-clip 1.0; EMA 0.999; bf16 autocast.
+  STEPS: 6,400 optimizer steps per arm = 1.638M samples (~4.2 passes over the 390k training pairs). At the measured 84 samples/s (10.5 steps/s at micro-batch 8) this is ~5.4 GPU-hours per arm, ~10.8 for both,
+  inside the 12 GPU-hour cap with margin for evaluation; 6 GPU-hours per arm was the allowance. One GPU per arm, IllinoisComputes-GPU (3-day cap, --time=3-00:00:00).
+  Seed 0 for both arms: identical initialization and identical training-pair order; only the t draws differ.
+  Arms: UNIFORM (t ~ U(0,1)) and TREATMENT t ~ Beta(0.25, 0.25); in BOTH arms t is CLAMPED to [0.01, 0.99]. Mass clamped: 1% at each end (uniform), 17.1% at each end (Beta(0.25,0.25)); the clipping is reported.
+  CLAMP, NOT TRUNCATION (disclosure): my first implementation truncated (renormalised) instead of clamping. Truncation removes the endpoint mass and cuts the treatment's predicted attainable reduction to 7.94%
+  (ratio 1.52x). The clamp is the literal reading of 'clip' and reproduces the 10.2% / 1.9x quoted in the review (10.25% / 1.89x here), so the clamp is what was built, tested (tests/test_flow_matching.py) and will run.
+  Model: FluxionDiT d_model 256, 6 layers, 8 heads, d_ff 1024, 9.15M parameters. Data: centered coordinates, real-residue mask, 13 training proteins / 12 entries, 5 held-out proteins / 4 entries
+  (split in the 2026-10-11 entry; 1b25_D excluded). The one-step prediction is z0 + v(z0, 0.01) (0.01 = the smallest t the models are trained at).
+
+(3) PRE-REGISTERED PREDICTIONS (results/phase3/predictions.json, scripts/phase3_predict.py; the attainable flow-loss reduction E_w[f], fraction of E||delta||^2 explained relative to v = 0):
+  uniform 5.41% (closed form, rho_eff = 0.695) / 5.51% (measured per-channel LINEAR f(t) curve); Beta(0.25,0.25) 10.25% / 10.41%; predicted treatment/control RATIO 1.894 / 1.889.
+  The measured-curve version is the attainable value for LINEAR estimators of E[delta | z_t]; a nonlinear model could exceed it, and a 9M model may fall short of it.
+
+(4) METRICS, both reported for every evaluation.
+  PRIMARY (the pre-registered test of the attenuation account): flow-loss reduction R(t) = 1 - L_model(t)/L(v=0) on a fixed grid of 41 t values in [0.01, 0.99], pooled over 400 sampled frames per held-out protein; each arm's ATTAINED
+  reduction = integral of R against that arm's OWN clamped t distribution (point masses included); measured treatment/control ratio against the predicted 1.89, with a bootstrap CI over the 4 held-out entries (coarse; per-entry values shown).
+  DOWNSTREAM readout: % improvement over identity of the 1-step and 8-step Euler z1_hat, against identity AND against the alpha*z0 shrinkage ceiling (alpha and per-channel linear fitted on the training entries only).
+  In-sample columns (training proteins) are reported and labelled. EMA and raw weights both reported.
+  INTERMEDIATE EVALUATIONS at 25/50/75/100% of the run (milestone checkpoints at steps 1600, 3200, 4800, 6400) so we can see whether the curve is still moving when the budget expires.
+  LIVE METRIC logged every 10 optimizer steps: train loss, v=0 loss on the same batches, and flow-loss reduction = 1 - L/L(v=0) (loss_log.csv); plus a held-out one-step-vs-identity monitor every 100 steps.
+
+(5) PASS CONDITION for the attenuation account: both arms' attained flow-loss reduction > 0 AND the measured treatment/control ratio within [1.5, 2.3] (the predicted 1.89 +/- ~20%). A treatment arm that beats the control but misses
+  the predicted ratio is still informative; the measured ratio is reported against 1.89 either way, along with each arm's attained/predicted fraction.
+  INTERPRETATION TABLE (stated in advance; the SNR mechanism and the attenuation mechanism are separate and both are scored):
+    uniform ~ 0, treatment > 0 with ratio ~ 1.9      -> attenuation binding even above the noise floor (SNR >= 1 does not rescue uniform t)
+    both > 0, ratio ~ 1.9                             -> both arms learn once the batch is large: batch/SNR was the binding constraint for the original run, and attenuation then costs the predicted factor
+    both > 0, ratio ~ 1                               -> SNR/batch explains the original failure; attenuation is not binding at this batch
+    both ~ 0                                          -> neither mechanism is sufficient: capacity, optimization or the objective's attainable signal at 9M parameters; the account is incomplete
+  Downstream: matching the shrinkage ceiling on held-out frames is a pass; exceeding it is not expected and would be noted, not claimed.
+
+(6) KILL / STOP CONDITIONS (checked from loss_log.csv).
+  (a) divergence: NaN, or training loss > 2x the v=0 loss after warmup -> stop that arm, log the fix, restart from scratch (an arm is never re-run to improve a result).
+  (b) STEP 500 CHECK: report to Arjun both arms' live flow-loss reduction and held-out monitor. If neither arm's live reduction exceeds 1% by step 500, flag it immediately; continuing or stopping is Arjun's decision
+      (500 steps is inside the end of warmup, so this is a flag, not an automatic kill).
+  3b (conditional p(z1|z0)) goes to FUTURE_WORK.md unrun; two arms are the whole configuration budget.
