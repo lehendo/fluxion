@@ -545,3 +545,24 @@ The cell is not dropped under either outcome.
 COMPARISON COUNT. B1 grid as reported: lags {100 ps, 1 ns, 10 ns, 50 ns} x predictor rows {linear_diag, linear_full, shrink, mlp, mean, id/mean} x protein sets {8, 13} = 48 displayed cells (36 at interpretable lags).
 The claim rests on 12 pre-specified TRUSTED cells: {linear_diag, shrink} x {100 ps, 1 ns, 10 ns} x {8-set, 13-set}; the ridge row adds 6 (m = 18 with it). Bonferroni-corrected CIs use m = 12 (99.58% level) and are printed beside every
 cell by scripts/phase1b_report.py. The report states how many of the 36 interpretable cells exclude 0 uncorrected, for both directions.
+
+=====================================================================================================================
+2026-10-11. B1 RIDGE CHECK RESULT (job 11290912; results/phase1/b1_ridge/; scripts/phase1b_report.py results/phase1/b1_ridge). Applying the rule pre-registered above.
+INTEGRITY: the re-run reproduces the original identity/linear_diag/shrink/linear_full/mean numbers on all 520 compared cells (max |difference| 6.2e-5 percentage points). PASS.
+RESULT, 13-protein set, 100 ps, Chai-1 minus Cartesian, % over identity (95% CI over 11 entries):
+  per-channel linear (OLS)    +7.10 [+2.10, +12.47]      Chai 4.56, Cartesian -2.53
+  per-channel linear (RIDGE)  +7.47 [+2.21, +13.10]      Chai 4.28, Cartesian -3.19
+  shrinkage                   +0.56 [-2.85, +3.89]       Chai 10.91, Cartesian 10.36
+  (1 ns: OLS +4.35 [-0.32,+9.34], ridge +4.23 [-0.36,+9.20]; 10 ns: OLS +4.60 [-2.33,+12.90], ridge +4.55 [-2.59,+13.05])
+DECISION RULE: the ridge difference stayed >= +5 with a 95% CI above 0 at 100 ps (+7.47 [+2.21,+13.10]) => the overfitting reading is NOT SUPPORTED by this check; the cell STANDS as stated. It is not dropped.
+COMPARISON COUNT AND CORRECTION. B1 grid = 4 lags x 6 rows x 2 sets = 48 displayed cells; 36 at interpretable lags. Uncorrected, 8 of the 36 exclude 0 (6 favour Chai-1, 2 favour Cartesian; the cells are strongly
+correlated, so this is not 8 independent draws). Bonferroni at m = 12 (the pre-specified trusted cells): the 100 ps linear_diag cell CI is [+0.08, +14.88] (survives by 0.08 points: marginal); the ridge cell [+0.11, +15.67].
+At m = 18 (adding the 6 post hoc ridge cells): [-0.17, +15.28] and [-0.12, +16.05] (does NOT survive). The shrinkage row, the row the claim rests on, excludes 0 in no cell at either correction.
+WEAKNESSES OF THE CHECK ITSELF (stated because the check came out 'the cell stands' and that deserves scrutiny, not celebration):
+  (1) Ridge pulls slopes toward ZERO, but the right target for these slopes is the common shrinkage level (alpha ~ 0.7); pulling toward 0 is not the 'toward shrinkage' direction the pre-registration anticipated. The infinite-penalty
+      limit toward a common slope IS the shrinkage row, and it shows no difference (+0.56 [-2.85,+3.89]). A ridge toward alpha would be a better-targeted test; not run (a further post hoc variant).
+  (2) The validation replica selected c = 0 (plain OLS) in 93/156 Chai folds-cells and 85/156 Cartesian ones, and the grid edge c = 10 in 28 and 31: a bimodal choice, not the smooth interior optimum a pure
+      estimation-noise story would predict. The grid's upper end may be too low.
+READING (revised): per-channel linear loses less relative to shrinkage in Chai-1 space (10.91 -> 4.56, -6.4 points) than in Cartesian PCA space (10.36 -> -2.53, -12.9 points): Chai-1's per-component slopes transfer across
+replicas somewhat better than Cartesian PCA slopes do. Both are beaten by one scalar. This is a descriptive difference in a probe nobody should use; it is not support for 'Chai-1 latents are a better dynamics space', and it
+is not robust to multiplicity correction at m = 18. 'Estimation noise' as the explanation is not supported and is withdrawn as the stated reading.
