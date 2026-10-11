@@ -41,7 +41,7 @@ def report(m):
     res = json.loads(f.read_text())
     out = {"milestone": m, "steps": res["arms_steps"], "alpha": res["alpha"]}
     lines = [f"\n######## milestone {m}%  (steps {res['arms_steps']}, alpha = {res['alpha']:.4f}) ########"]
-    fs = res["flow_summary"]["held_out"]
+    fs = res.get("flow_summary", {}).get("held_out", {})
     lines.append("PRIMARY (held-out attained flow-loss reduction, fraction of E||delta||^2; each arm integrated against its OWN clamped t distribution):")
     for k, v in fs.items():
         if "attained_reduction" in v:
@@ -51,7 +51,8 @@ def report(m):
             lines.append(f"  {k:36s} {v['point']:.3f} [{v['ci95'][0]:.3f}, {v['ci95'][1]:.3f}]   (predicted ratio 1.89; pass band [1.5, 2.3])")
     pe = per_entry(res, "held_out"); ents = sorted(pe)
     lines.append(f"DOWNSTREAM held-out, % improvement over identity, per entry {ents}:")
-    meths = [k for k in pe[ents[0]] if k in ("shrink", "linear_diag") or k.endswith("_n1") or k.endswith("_n8")]
+    import re
+    meths = [k for k in pe[ents[0]] if k in ("shrink", "linear_diag") or re.search(r"_n\d+$", k)]
     for k in meths:
         vals = [pe[e][k] for e in ents]
         mm, lo, hi = boot(vals)
@@ -63,6 +64,8 @@ def report(m):
         mm, lo, hi = boot(d); deltas[k] = {"per_entry": dict(zip(ents, d)), "mean": mm, "ci95": [lo, hi], "n_positive": int(sum(x > 0 for x in d)), "n": len(d)}
         lines.append(f"  {k:26s} " + "  ".join(f"{v:+6.2f}" for v in d) + f"   mean {mm:+6.2f} [{lo:+6.2f}, {hi:+6.2f}]   positive in {sum(x > 0 for x in d)}/{len(d)}")
     out["deltas_vs_shrink"] = deltas
+    if not any(v["group"] == "in_sample" for v in res["per_protein"].values()):
+        print("\n".join(lines)); return out
     pi = per_entry(res, "in_sample")
     lines.append("IN-SAMPLE (training proteins; labelled in-sample), mean over entries of % over identity: " + ", ".join(f"{k}={np.mean([pi[e][k] for e in pi]):+.2f}" for k in meths if k.endswith("_ema_n1") or k == "shrink"))
     print("\n".join(lines))

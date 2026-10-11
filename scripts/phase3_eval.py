@@ -31,6 +31,7 @@ N_FRAMES = 400
 N_FRAMES_IN_SAMPLE = 100
 T_LO, T_HI = 0.01, 0.99
 T_GRID = np.linspace(T_LO, T_HI, 41)
+STEPS = (1, 2, 4, 8)           # Euler integration-step sweep for the downstream readout (pre-registered prediction in the log: monotone decrease toward the identity map)
 
 
 def arm_masses(t_cfg: dict, grid: np.ndarray = T_GRID) -> np.ndarray:
@@ -124,7 +125,7 @@ def score_protein(ds, pairs, models, alpha, a, k, dev, seed: int, arm: str):
         pb = pairs[pi]
         preds = {"identity": z0, "shrink": alpha * z0, "linear_diag": a + k * z0}
         for mname, m in models.items():
-            for steps in (1, 8):
+            for steps in STEPS:
                 preds[f"dit_{arm}_{mname}_n{steps}"] = integrate(m, z0, pb, mask, steps)
         for name, p in preds.items():
             sums[name] = sums.get(name, 0.0) + float((((p - z1) ** 2) * valid).sum())
@@ -146,7 +147,11 @@ def main() -> None:
     ap.add_argument("--arm", action="append", nargs=2, metavar=("NAME", "CKPT"), required=True, help="repeatable: --arm uniform path --arm beta path")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--steps", type=int, nargs="+", default=list(STEPS), help="Euler step counts for the downstream readout")
+    ap.add_argument("--skip-flow", action="store_true", help="skip the flow-loss curves (cheap integration-step sweep only)")
+    ap.add_argument("--groups", nargs="+", default=["held_out", "in_sample"], choices=["held_out", "in_sample"])
     a = ap.parse_args()
+    globals()["STEPS"] = tuple(a.steps)
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     cfgs = [json.loads((Path(c).parent / "config.json").read_text()) for _, c in a.arm]
     train_p, held_p = cfgs[0]["train"], cfgs[0]["held_out"]
@@ -207,7 +212,7 @@ def main() -> None:
         if old.get("arms_steps") == res["arms_steps"] and abs(old.get("alpha", -1) - alpha) < 1e-9:
             res["per_protein"], res["flow"] = old["per_protein"], old["flow"]
             print(f"[eval] resumed {len(res['per_protein'])} proteins from {partial}", flush=True)
-    for group, dss in (("held_out", ho), ("in_sample", tr)):
+    for group, dss in [(g, d) for g, d in (("held_out", ho), ("in_sample", tr)) if g in a.groups]:
         for p, ds in dss.items():
             if f"{group}:{p}" in res["per_protein"]:
                 continue
@@ -215,7 +220,7 @@ def main() -> None:
             first = True
             for name, (models, _, _) in arms.items():
                 r = score_protein(ds, pairs, models, alpha, ba, bk, dev, a.seed, name)
-                fl = flow_loss_curves(ds, pairs, models, dev, a.seed, N_FRAMES if group == "held_out" else N_FRAMES_IN_SAMPLE)
+                fl = {} if a.skip_flow else flow_loss_curves(ds, pairs, models, dev, a.seed, N_FRAMES if group == "held_out" else N_FRAMES_IN_SAMPLE)
                 for mname, curve in fl.items():
                     res["flow"].setdefault(f"{group}:{p}", {})[f"{name}_{mname}"] = curve
                 if first:
@@ -224,7 +229,7 @@ def main() -> None:
             close_handles(ds)
             res["per_protein"][f"{group}:{p}"] = {"group": group, "mse": row, "pct_vs_identity": {k: 100 * (1 - v / row["identity"]) for k, v in row.items() if k != "identity"}}
             partial.write_text(json.dumps({"alpha": alpha, "arms_steps": res["arms_steps"], "per_protein": res["per_protein"], "flow": res["flow"]}))
-            if group == "held_out" and all(f"held_out:{q}" in res["per_protein"] for q in ho):
+            if group == "held_out" and "held_out" in a.groups and all(f"held_out:{q}" in res["per_protein"] for q in ho):
                 finalize()                                          # a complete held-out JSON exists before the slow in-sample part starts
             print(f"[eval] {group} {p}: " + "  ".join(f"{k}={100 * (1 - v / row['identity']):+.2f}%" for k, v in row.items() if k in ("shrink", "linear_diag") or k.endswith("_ema_n1")), flush=True)
     summary, flow_summary = finalize()
