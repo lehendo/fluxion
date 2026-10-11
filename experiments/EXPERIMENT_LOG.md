@@ -780,3 +780,19 @@ OBSERVATION (not a result): in samples, batch 16 learned the held-out one-step s
 (batch is NOT what blocks learning in the new setup; the SNR account of the original null is wrong as an explanation or at least not sufficient), and it also says the batch-256 design of the 3a arms made the uniform arm LESS sample-efficient than necessary. It is the opposite of the review's expectation
 that batch 16 would sit below the noise floor. Caveats stated in advance in the pre-registration still apply: one seed, a monitor not an evaluation, SNR < 1 does not preclude learning with more steps (3c has 16x the optimizer steps), and the original run still differs in the other eight ways.
 Nothing is concluded until 3c finishes and its held-out evaluation is run under the pre-registered readings.
+
+=====================================================================================================================
+2026-10-11. RAW RESULTS, PRE-REGISTERED EVALUATION, MILESTONE 100% (step 6,400), HELD-OUT ONLY (job 11325813 wrote the complete held-out JSON before its in-sample pass; results/phase3/eval_100.json; in-sample columns pending).
+Held-out = 4 entries (16pk, 1aol, 1bq8, 1bxy[A,B]); shrinkage alpha = 0.7171 (training entries); predicted attainable flow-loss reduction uniform 0.0541, beta 0.1025, ratio 1.89 (pass: both arms > 0 and ratio in [1.5, 2.3]).
+PRIMARY, held-out attained flow-loss reduction [95% bootstrap CI over 4 entries] (attained/predicted):
+  uniform EMA 0.0546 [0.0376, 0.0716] (1.01)   uniform raw 0.0544 [0.0385, 0.0703] (1.01)   beta EMA 0.1027 [0.0745, 0.1308] (1.00)   beta raw 0.0881 [0.0572, 0.1190] (0.86)
+  ratio beta/uniform: EMA 1.880 [1.781, 2.102]   raw 1.619 [1.485, 1.693]   (the raw CI is entirely below 1.89 and its lower end is just under the 1.5 edge of the pass band)
+  (75% for comparison: uniform EMA 0.0484 / raw 0.0532; beta EMA 0.1054 / raw 0.0993; ratios 2.178 / 1.868. The beta RAW weights got WORSE between 75% and 100%: 0.0993 -> 0.0881.)
+DOWNSTREAM, held-out, % improvement over identity, mean over 4 entries [CI]: shrinkage +16.47 [+13.18, +19.50]; linear_diag +16.49.
+  one step (z0 + v(z0, 0.01)):  uniform EMA +15.31 [+11.04, +19.58], raw +15.21 [+11.03, +19.39];  beta EMA +15.42 [+11.36, +19.49], raw +13.15 [+8.35, +17.94]
+  per entry (16pk, 1aol, 1bq8, 1bxy): shrinkage +19.20 +11.17 +15.72 +19.80; uniform EMA +19.77 +11.57 +10.52 +19.39; beta EMA +19.43 +10.63 +12.09 +19.55; uniform raw +19.51 +11.45 +10.61 +19.27; beta raw +17.92 +8.59 +8.11 +17.96
+MODEL MINUS SHRINKAGE, one step, points [CI over 4 entries], entries positive: uniform EMA -1.16 [-3.80, +0.48] 2/4; uniform raw -1.26 [-3.77, +0.29] 2/4; beta EMA -1.05 [-2.79, +0.03] 1/4; beta raw -3.33 [-6.17, -1.56] 0/4.
+  per entry (16pk, 1aol, 1bq8, 1bxy) uniform EMA +0.57 +0.40 -5.21 -0.42; beta EMA +0.22 -0.54 -3.63 -0.26. The deficit is concentrated in 1bq8_A (-3.6 to -7.6 points across variants); on 16pk, 1aol and 1bxy the one-step model is within about +/-1 point of shrinkage (beta raw excepted).
+INTEGRATION-STEP SWEEP (held-out, % over identity, mean over 4 entries), k = 1, 2, 4, 8:  uniform EMA 15.31, 13.22, 8.17, 4.52;  uniform raw 15.21, 13.42, 8.73, 5.38;  beta EMA 15.42, 12.86, 7.59, 3.79;  beta raw 13.15, 13.81, 8.45, 4.28.
+  Pre-registered closed-form (Gaussian, rho_eff 0.695): +15.23, +11.32, +6.71, +3.65. Monotone decrease with k in 3 of 4 variants; beta RAW is NON-monotone between k = 1 and 2 (13.15 -> 13.81; its one-step value is itself degraded). All variants stay POSITIVE at k = 8
+  and sit about 1-2 points ABOVE the closed-form curve at k = 2, 4, 8. Relative to the one-step value the measured k = 2/4/8 retention (uniform EMA) is 0.86 / 0.53 / 0.30 vs 0.74 / 0.44 / 0.24 predicted. Model minus shrinkage at k = 8 is about -11 to -13 points (CIs exclude 0).
