@@ -796,3 +796,14 @@ MODEL MINUS SHRINKAGE, one step, points [CI over 4 entries], entries positive: u
 INTEGRATION-STEP SWEEP (held-out, % over identity, mean over 4 entries), k = 1, 2, 4, 8:  uniform EMA 15.31, 13.22, 8.17, 4.52;  uniform raw 15.21, 13.42, 8.73, 5.38;  beta EMA 15.42, 12.86, 7.59, 3.79;  beta raw 13.15, 13.81, 8.45, 4.28.
   Pre-registered closed-form (Gaussian, rho_eff 0.695): +15.23, +11.32, +6.71, +3.65. Monotone decrease with k in 3 of 4 variants; beta RAW is NON-monotone between k = 1 and 2 (13.15 -> 13.81; its one-step value is itself degraded). All variants stay POSITIVE at k = 8
   and sit about 1-2 points ABOVE the closed-form curve at k = 2, 4, 8. Relative to the one-step value the measured k = 2/4/8 retention (uniform EMA) is 0.86 / 0.53 / 0.30 vs 0.74 / 0.44 / 0.24 predicted. Model minus shrinkage at k = 8 is about -11 to -13 points (CIs exclude 0).
+
+=====================================================================================================================
+2026-10-11. RAW: 100% IN-SAMPLE COLUMN AND HELD-OUT INTEGRATION-STEP SWEEPS AT 25% AND 75% (jobs 11325813 [finished, 1.42 h], 11325815, 11325816; results/phase3/eval_100.json now complete, steps_025.json, steps_075.json). Numbers only.
+100% IN-SAMPLE (13 training proteins; labelled in-sample; mean over entries of % over identity; 100 frames per protein): shrinkage +14.09; uniform EMA one-step +16.42; beta EMA one-step +17.86.
+  The model is ABOVE the shrinkage ceiling on training proteins (+2.3 and +3.8 points) and about 1 point BELOW it on held-out proteins (-1.16 and -1.05, CIs include 0): an in-sample/held-out gap of about 3.5-4.9 points.
+INTEGRATION-STEP SWEEP, held-out, % over identity, mean over 4 entries, k = 1, 2, 4, 8 (shrinkage +16.47):
+  25% (step 1,600): uniform EMA -2.49, -2.89, -3.11, -3.24;  uniform raw +1.42, +0.80, +0.11, -0.33;  beta EMA -5.53, -7.85, -9.17, -9.94;  beta raw +4.18, +3.38, +1.92, +0.90.
+  75% (step 4,800): uniform EMA +12.14, +11.13, +6.49, +3.14;  uniform raw +14.63, +13.08, +8.24, +4.74;  beta EMA +15.24, +10.93, +6.23, +3.13;  beta raw +14.49, +13.24, +8.52, +5.04.
+  100% (step 6,400): uniform EMA +15.31, +13.22, +8.17, +4.52;  uniform raw +15.21, +13.42, +8.73, +5.38;  beta EMA +15.42, +12.86, +7.59, +3.79;  beta raw +13.15, +13.81, +8.45, +4.28.
+  Closed form for the exact optimal field (Gaussian, rho_eff 0.695): +15.23, +11.32, +6.71, +3.65.
+  At 25% every variant is near or below identity at every k (EMA negative); at 75% and 100% all variants decrease monotonically with k except beta raw at 100% (k = 1 -> 2 increases) and uniform EMA at 75% is monotone; all 75% and 100% values stay positive at k = 8.
