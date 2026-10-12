@@ -2,7 +2,7 @@
 analysis/theory.py
 
 Closed forms for the conditional-flow-matching regression target between the two ends of a stationary,
-time-reversible pair (z0, z1) (see theory.md). Gaussian case with correlation rho (unit variance):
+time-reversible pair (z0, z1). Gaussian case with correlation rho (unit variance):
 
     delta = z1 - z0,  z_t = (1-t) z0 + t z1
     Cov(delta, z_t) = -(1-rho)(1-2t),  Var(z_t) = 1 - 2(1-rho) t (1-t),  Var(delta) = 2(1-rho)
