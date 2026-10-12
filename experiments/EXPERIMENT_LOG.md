@@ -850,3 +850,16 @@ TRAINING-LOG TRACE (held-out one-step MONITOR, 16 pairs per held-out protein, ra
   first live reduction > 1% at step 960 (15,360 samples), > 5% at 3,360 (53,760), > 10% at 33,120 (529,920). Held-out raw monitor max 17.3, final raw 15.2, final EMA 15.4.
   Pattern (a trace, not a test): the held-out monitor rose to ~17% by ~12k-38k steps and then DRIFTED DOWN to ~15.2-15.4 while the in-sample live reduction kept rising (4.4 -> 14.4%): the in-sample/held-out divergence of an over-fitting model (the same direction as the 100% in-sample column of the 3a arms).
 TRAINING GPU-HOURS (from the logs/sacct): 3a uniform 3.26 + beta 3.98 = 7.24; 3c 3.75; diagnostic 8 runs 3.29 (22.4 + 26.0 + 26.6 + 23.1 + 26.7 + 25.4 + 24.2 + 23.3 min) => 14.28 of the 15 GPU-hour training cap. EVALUATION GPU-hours reported separately in the final report.
+
+=====================================================================================================================
+2026-10-11. RAW: MILESTONE 50% (step 3,200), HELD-OUT (job 11325814 wrote the complete held-out JSON at 21:46 before its in-sample pass; results/phase3/eval_050.json). Numbers only.
+attained held-out flow-loss reduction [CI over 4 entries] (attained/predicted): uniform EMA 0.0166 [0.0133, 0.0202] (0.31); uniform raw 0.0516 [0.0362, 0.0669] (0.95); beta EMA 0.0510 [0.0432, 0.0587] (0.50); beta raw 0.0966 [0.0684, 0.1248] (0.94).
+ratio beta/uniform: EMA 3.077 [2.711, 3.565] (EMA lag: both EMAs still below their raw weights); raw 1.873 [1.837, 1.928].
+one-step held-out % over identity (shrinkage +16.47): uniform EMA +3.23, raw +14.45; beta EMA +8.34, raw +14.83. Model minus shrinkage (points, CI): uniform raw -2.02 [-3.81, -0.55] (0/4 positive), beta raw -1.64 [-3.33, -0.37] (0/4), uniform EMA -13.24, beta EMA -8.13.
+MILESTONE TRAJECTORY, held-out attained flow-loss reduction (25% / 50% / 75% / 100%; steps 1,600 / 3,200 / 4,800 / 6,400):
+  RAW weights:  uniform 0.0065 / 0.0516 / 0.0532 / 0.0544;   beta 0.0306 / 0.0966 / 0.0993 / 0.0881.      predicted 0.0541 and 0.1025.
+  EMA weights:  uniform -0.0268 / 0.0166 / 0.0484 / 0.0546;  beta -0.1124 / 0.0510 / 0.1054 / 0.1027.
+ONE-STEP held-out % over identity, trajectory (25% / 50% / 75% / 100%):
+  RAW:  uniform +1.42 / +14.45 / +14.63 / +15.21;   beta +4.18 / +14.83 / +14.49 / +13.15.     EMA:  uniform -2.49 / +3.23 / +12.14 / +15.31;   beta -5.53 / +8.34 / +15.24 / +15.42.     shrinkage +16.47 throughout.
+Reading of the trajectory (a description, not a test): the RAW weights reach their predicted plateau by step 3,200 (50%) and then stay flat (uniform) or slip slightly (beta raw 0.0993 -> 0.0881 and one-step 15.0 -> 13.2 between 75% and 100%); the EMA weights lag and only catch up by 75-100%.
+So neither arm was still improving at step 6,400 in the raw weights; what changes from 50% to 100% is mostly the EMA catching up, and the late-training behaviour is flat-to-slightly-worse.
