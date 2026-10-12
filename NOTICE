@@ -1,0 +1,31 @@
+Fluxion
+Copyright 2026 Arjun Chatterjee
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+The license applies to the source code in this repository only.
+
+Third-party software (used as dependencies, not distributed here)
+-----------------------------------------------------------------
+- chai-lab (Chai-1), Chai Discovery: Apache License 2.0, for both the code and the model weights.
+  https://github.com/chaidiscovery/chai-lab
+- MDAnalysis: GNU Lesser General Public License v3.0 or later.
+  https://github.com/MDAnalysis/mdanalysis
+- Other dependencies (PyTorch, NumPy, SciPy, pandas, h5py, matplotlib, and others listed in
+  requirements.txt) are distributed under their own permissive licenses.
+
+Data
+----
+This repository does not contain any molecular dynamics data, extracted latents, or trained model
+weights. The pipeline is designed to be run on the ATLAS database of protein molecular dynamics
+simulations:
+
+  Vander Meersche Y, Cretin G, Gheeraert A, Gelly J-C, Galochkina T.
+  ATLAS: protein flexibility description from atomistic molecular dynamics simulations.
+  Nucleic Acids Research 52(D1):D384-D392 (2024).
+  https://www.dsimb.inserm.fr/ATLAS
+
+ATLAS is released under the Creative Commons Attribution-NonCommercial 4.0 International license
+(CC BY-NC 4.0). That restriction applies to the data and to material derived from it, such as
+latents extracted from ATLAS trajectories, and it is not lifted by the license on this code.
+Anyone who runs this pipeline on ATLAS must comply with those terms, including the restriction
+to non-commercial use.
