@@ -54,3 +54,7 @@ Each stage (latent extraction, normalization statistics, training, sampling, dec
 - Albergo and Vanden-Eijnden. *Building Normalizing Flows with Stochastic Interpolants.* 2022.
 - Tong et al. *Improving and Generalizing Flow-Based Generative Models with Minibatch Optimal Transport.* 2023.
 - Peebles and Xie. *Scalable Diffusion Models with Transformers.* 2023.
+
+## License and data
+
+The code is released under the [Apache License 2.0](LICENSE); see [NOTICE](NOTICE) for attributions. The repository contains no molecular dynamics data, extracted latents or trained weights. The pipeline is built around the [ATLAS](https://www.dsimb.inserm.fr/ATLAS) database, which is licensed CC BY-NC 4.0 (non-commercial, attribution required); that restriction applies to the data and anything derived from it, and users must obtain and use ATLAS under its own terms.
