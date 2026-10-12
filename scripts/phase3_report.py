@@ -12,7 +12,7 @@ import numpy as np
 
 D = Path("results/phase3")
 PRED = json.loads((D / "predictions.json").read_text())["arms"]
-PRED_FLOW = {"uniform": PRED["uniform"]["closed_form"], "beta": PRED["beta(0.25,0.25)"]["closed_form"]}
+PRED_FLOW = {"uniform": PRED["uniform"]["closed_form"], "beta": PRED["beta(0.25,0.25)"]["closed_form"], "bs16": PRED["uniform"]["closed_form"]}   # 3c is uniform t
 
 
 def entry(p): return p.split("_")[0]
