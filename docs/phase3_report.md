@@ -31,11 +31,11 @@ The attained reduction under each arm's own sampling distribution is therefore 0
 evaluating the uniform arm's own curve under both weights gives 1.891. A reviewer would be right to say so. There is also no "decoupling" between the flow-matching objective's loss and one-step predictive quality: the one-step readout is R(t) at t ≈ 0, and the arms agree there
 (14.05% vs 13.91%), which is the same fact seen at a different weight. The EMA ratio (2.18 [2.00, 2.60]) differs only because the uniform arm's EMA still lagged at t ≈ 0 at step 4,800.
 
-## 3. Where endpoint weighting does matter: speed **[monitor, not the pre-registered eval]**
+## 3. Speed: the endpoint-weighting advantage is NOT robust
 
-On the trainer's held-out monitor (raw weights; 16 pairs per held-out protein; one-step improvement over identity), the beta arm was above 10% by step 200 (the first monitor point above 1%; step 100 was −0.03%), the uniform arm first exceeded 1% at step 1,400 and 10% at step 2,500:
-at least 7× sooner to 1% and 12× sooner to 10%, before the beta arm's instability at step ~350. That is 4–6× larger than the 1.89× difference in attainable signal and is **unexplained**. The held-out evaluations are the only numbers that count for levels; this is a training-dynamics observation
-from a monitor, with one seed per arm.
+In the first pair of 3a runs, on the trainer's held-out monitor (raw weights, one-step improvement over identity), the beta arm was above 10% by step 200 and the uniform arm first exceeded 1% at step 1,400 (a ratio of 7-12). The diagnostic's repeat of the same seed-0 uniform configuration took off at ~200 steps (A_s0), and
+a second uniform seed had not taken off by step 600 (A_s1); beta onsets across runs were 130-470 steps. Uniform onsets: 200, >600, ~1,400 (n = 3); beta onsets: 150, 150 (a seed-0 duplicate), 260, 470, 130 (n = 5); exact one-sided permutation p ≈ 0.07. So a speed advantage of endpoint weighting is **suggestive, not established**, and the earlier ">= 7-12x" statement
+(from one pair) is withdrawn. Run-to-run variability at a fixed configuration is as large as the effect being claimed. All of these onset times are from a monitor or live in-sample traces, not the pre-registered evaluation.
 
 ## 4. Against the shrinkage ceiling: about one point below at the end, with one protein driving the gap
 
@@ -57,7 +57,8 @@ Nine: (1) batch 16 → 256; (2) padding masked from loss and attention; (3) per-
 (8) t range (affine [1e-5, 1 − 1e-5] → clamp [0.01, 0.99]); (9) held-out split and exclusion of the 768-bucket protein (13 training proteins vs 19). Arm 3c varies (1) with its tied LR/warmup/EMA scalings and holds the other eight at their new values, so a null supports the gradient-SNR account *conditional on the other fixes*
 and does not establish that batch size alone explains the original result.
 
-## 7. Treatment-arm instability, and the guard
+## 7. Instability: the peak learning rate, not (demonstrably) the clamp
 
-The beta arm's training loss reached 2.19× the v = 0 loss at step ~350 (peak LR), collapsed to ~zero velocity, and re-learned. The explanation is open: clamping puts 17.1% of draws on near-clean inputs (a hypothesis), but the peak LR/gate LR (shared with the uniform arm, which had a smaller transient) is an equally supported cause. A 4-condition × 2-seed diagnostic is
-queued. An in-run guard (halt on windowed loss > 2× the v = 0 loss, sentinel file, no requeue) is now in the trainer; replayed on the logged runs it fires on the beta arm at step 360 and never on the uniform arm. `docs/practitioner_notes.md` records the evidence level.
+The beta arm's training loss reached 2.19x the v = 0 loss at step ~350 and collapsed to ~zero velocity. A pre-registered 8-run diagnostic (4 conditions x 2 seeds x 600 steps; `experiments/EXPERIMENT_LOG.md`) shows: halving the peak LR (and the x10 gate LR) removed every excursion in both seeds (max grad norm 0.003 vs up to 0.51) and learning began at 180-200 steps with a stable held-out monitor;
+at peak LR the beta-clamp collapse reproduced (seed 0) but not on seed 1; **truncated** Beta (no boundary point mass) also collapsed on one seed (outside the registered window, which began after step 350: a limitation of my definition), and the uniform arm had an excursion on one seed. By the registered definition the reading is R1 (clamp implicated, LR the lever), provisional and seed-dependent;
+under a window-agnostic definition it is R3 (LR the cause, t distribution incidental). The clamp-specific hypothesis is not supported; the LR lever is. An in-run guard (halt on windowed loss > 2x the v = 0 loss after warmup; sentinel; no requeue) is in the trainer; note it shares the "after warmup" limitation. `docs/practitioner_notes.md` records the evidence level.
