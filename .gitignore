@@ -6,3 +6,8 @@ __pycache__/
 .DS_Store
 logs/
 results/
+
+# Local-only working material (kept on disk, deliberately not in the repo)
+docs/
+experiments/
+FUTURE_WORK.md
