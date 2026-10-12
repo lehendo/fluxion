@@ -2,7 +2,7 @@
 """
 scripts/summarize_lag_sweep.py
 
-Parses the output logs from scripts/sweep_lag_baseline.sh (one file per
+Parses the output logs from slurm/analysis/sweep_lag_baseline.sh (one file per
 SLURM array task, one lag value each) into a single table sorted by lag, so
 the crossover point — where real conformational-dynamics signal starts to
 exceed thermal noise — is visible at a glance instead of scattered across

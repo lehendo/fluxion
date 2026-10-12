@@ -120,7 +120,7 @@ def load_pair(latents_dir: Path, protein_id: str) -> torch.Tensor:
     pair_path = latents_dir / protein_id / "pair.pt"
     if not pair_path.exists():
         raise FileNotFoundError(
-            f"pair.pt not found for {protein_id}. Run extract_pairs.slurm first."
+            f"pair.pt not found for {protein_id}. Run slurm/extraction/extract_pairs.slurm first."
         )
     return torch.load(pair_path, weights_only=True).float()
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Full-scale run of the static-ensemble pivot (noise -> equilibrium frame
 # OT-CFM, see training/train_static.py). Validated first via the 5-minute
-# smoke test (scripts/train_static_diagnostic.sh, 2026-07-14): 170+ real
+# smoke test (slurm/training/train_static_diagnostic.sh, 2026-07-14): 170+ real
 # steps on real GPU/data, finite loss, no crash.
 #
 # Uses ALL 19 extracted proteins (not just the 14-protein fast-extraction

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Cheap smoke test for the OT-coupling training code path (training/
 # ot_coupling.py + its wiring into train_static.py) BEFORE committing to
-# the multi-day retrain (scripts/train_static_otcfm.sh). Unit-tested
+# the multi-day retrain (slurm/training/train_static_otcfm.sh). Unit-tested
 # thoroughly against synthetic data already — this just confirms it runs
 # correctly on real GPU + real multi-protein batches (real mixed padding,
 # real batch size/token counts) with no shape/dtype/perf surprises, same

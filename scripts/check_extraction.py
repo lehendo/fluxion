@@ -134,7 +134,7 @@ def main():
             print(f"  {protein_id} R{replica}")
 
     if PARTIAL or MISSING:
-        print("\nResubmit with: sbatch swarm_extract.slurm")
+        print("\nResubmit with: sbatch slurm/extraction/swarm_extract.slurm")
         sys.exit(1)
     else:
         print("\nAll jobs complete.")

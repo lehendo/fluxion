@@ -170,7 +170,7 @@ class LatentDataset(Dataset):
         if load_pair and not pair_path.exists():
             raise FileNotFoundError(
                 f"pair.pt not found at {pair_path}. "
-                "Run extract_pairs.slurm first, or pass load_pair=False."
+                "Run slurm/extraction/extract_pairs.slurm first, or pass load_pair=False."
             )
         self.static_pair: torch.Tensor | None = (
             torch.load(pair_path, weights_only=True).float() if load_pair else None
