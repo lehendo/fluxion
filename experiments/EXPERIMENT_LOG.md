@@ -807,3 +807,20 @@ INTEGRATION-STEP SWEEP, held-out, % over identity, mean over 4 entries, k = 1, 2
   100% (step 6,400): uniform EMA +15.31, +13.22, +8.17, +4.52;  uniform raw +15.21, +13.42, +8.73, +5.38;  beta EMA +15.42, +12.86, +7.59, +3.79;  beta raw +13.15, +13.81, +8.45, +4.28.
   Closed form for the exact optimal field (Gaussian, rho_eff 0.695): +15.23, +11.32, +6.71, +3.65.
   At 25% every variant is near or below identity at every k (EMA negative); at 75% and 100% all variants decrease monotonically with k except beta raw at 100% (k = 1 -> 2 increases) and uniform EMA at 75% is monotone; all 75% and 100% values stay positive at k = 8.
+
+=====================================================================================================================
+2026-10-11. RAW: STABILITY DIAGNOSTIC, CONDITIONS A, B, C (D still running; jobs 11315067_0-5; results/phase3/diag/). 600 steps each, schedule as the 3a arms (warmup 350, cosine over 6,400), record-mode guard (windowed 12,800-sample loss/v=0 loss > 2 after step 350, or non-finite).
+PRE-REGISTERED DEFINITION APPLIED. 'diverges' = a recorded step over the criterion after step 350.
+  A uniform / peak LR:        seed 0 max windowed ratio 0.975, no;   seed 1 1.000, no.
+  B beta-CLAMP / peak LR:     seed 0 max 2.887, first step over 351, 35 steps over: YES;   seed 1 0.930: no.   => SEED-DEPENDENT.
+  C beta-TRUNCATE / peak LR:  seed 0 max 1.000, no;   seed 1 max 1.049, no (by the registered definition).
+OBSERVATIONS OUTSIDE THE REGISTERED DEFINITION (post hoc, flagged as such):
+  (i) C seed 1 (TRUNCATED Beta, no boundary point masses) had a spike at step ~300 that the registered window (steps > 350) excludes because it fell on the LR ramp (LR at step 300 = 86% of peak): 10-step-window loss/v=0 loss 1.70, grad norm 0.078 (normally ~0.001-0.002),
+      live flow-loss reduction -69.9% (from +7%), held-out monitor 16.3% at step 200 -> -17.4% at step 300 -> ~0 from step 400 (collapse to ~zero velocity), i.e. the same learn-then-lose episode as the logged beta arm and B seed 0.
+  (ii) B seed 0 REPRODUCES the logged beta arm: onset first live reduction > 1% at step 150 (identical), held-out monitor 15.3% at step 200 and 16.6% at step 300, spike at step ~340 (loss/v0 8.2, grad norm 0.51; logged arm: step ~350, grad norm 0.72), collapse to ~0 by step 400. Timing shifted by ~10 steps (different hardware/bf16 numerics).
+  (iii) A seed 0 does NOT reproduce the logged uniform arm: it started learning at ~200 steps and held-out monitor was 15.5% at step 400, 17.7% at 600; the logged uniform arm was ~0 until step ~1,400. A seed 1 had not taken off by step 600 (monitor 5.1%).
+  (iv) The registered guard ('after warmup') would not have caught C seed 1's step-300 event; the in-run guard in the trainer shares that definition (it applies after warmup) and 3c has it on.
+ONSET OF LEARNING (first 10-step window with live in-sample flow-loss reduction > 1%, steps) and held-out monitor raw at 600: LOGGED uniform arm: ~1,400 (monitor); A_s0 200 (17.7%); A_s1 none by 600 (5.1%);  LOGGED beta arm 150; B_s0 150; B_s1 260 (17.2%); C_s0 470 (12.9%); C_s1 130 (collapsed).
+  Uniform-t onsets: 200, > 600, ~1,400 (n = 3). Beta onsets (clamp and truncate): 150, 150 (the reproduction of the same seed), 260, 470, 130 (n = 5). Exact one-sided permutation p for 'uniform later than beta' with the three uniform values at 200 / 650 / 1,400 against the five beta values: 4/56 = 0.07.
+  The logged 3a pair (uniform ~1,400 vs beta 150) was a single pair; across runs the uniform onset ranges over 200 to > 1,400 steps at the same seed-0 configuration (A_s0 vs the logged arm), so 'endpoint weighting is >= 7-12x faster' is NOT supported as a robust effect: it is suggestive (beta onsets 130-470 vs uniform 200, > 600, ~1,400; p ~ 0.07, n = 3 vs 5, one of the beta values duplicates a seed).
+D (beta-clamp, half peak LR) still running at the time of this entry; readings R1-R6 are applied after D completes.
