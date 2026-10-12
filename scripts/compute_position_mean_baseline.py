@@ -35,7 +35,7 @@ Usage:
         --lag         1
 
 --lag sweeps the frame offset between z0/z1 (default 1 = native ATLAS
-10ps/frame stride). See scripts/sweep_lag_baseline.sh to run this across many
+10ps/frame stride). See slurm/analysis/sweep_lag_baseline.sh to run this across many
 lag values in parallel SLURM array tasks, and
 scripts/summarize_lag_sweep.py to collect the results into one table.
 """

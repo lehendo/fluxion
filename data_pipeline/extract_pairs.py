@@ -25,7 +25,7 @@ Usage (single protein, interactive debug):
         --out-dir   /scratch/arjunc4/fluxion_data/latents \
         --protein-id 16pk_A
 
-Usage (all proteins, run inside a SLURM array via extract_pairs.slurm):
+Usage (all proteins, run inside a SLURM array via slurm/extraction/extract_pairs.slurm):
     SLURM_ARRAY_TASK_ID=0 python data_pipeline/extract_pairs.py \
         --atlas-raw /scratch/arjunc4/atlas_raw \
         --out-dir   /scratch/arjunc4/fluxion_data/latents

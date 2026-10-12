@@ -1,5 +1,5 @@
 #!/bin/bash
-# Short combined test before trusting scripts/train_full_run.sh with a real
+# Short combined test before trusting slurm/training/train_full_run.sh with a real
 # 72h commitment. Verifies two things on IllinoisComputes-GPU:
 #   1. Multi-GPU DDP starts cleanly on full (non-MIG) GPUs -- no "Duplicate
 #      GPU detected" NCCL error like the ic-express MIG node hit.

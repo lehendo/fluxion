@@ -15,7 +15,7 @@ jk_se = float(np.sqrt((len(jk) - 1) / len(jk) * ((np.asarray(jk) - np.mean(jk)) 
 snr = lambda n: float(np.sqrt(mu2 / (tr / (n / MB))))
 lines = ["# E3 gradient SNR: full table", "",
          f"Checkpoint step {d['ckpt_step']} of the ORIGINAL run (raw weights, 39.86M parameters, bf16 autocast, train mode), {d['microbatches']} microbatches of {MB} samples, training loss, random t.",
-         "Original run's effective batch CONFIRMED from its config (scripts/train_full_run.sh: torchrun --nproc_per_node=4, --batch-size 4, DDP-averaged gradients => 16; LR 1e-4, gate LR 1e-3).", "",
+         "Original run's effective batch CONFIRMED from its config (slurm/training/train_full_run.sh: torchrun --nproc_per_node=4, --batch-size 4, DDP-averaged gradients => 16; LR 1e-4, gate LR 1e-3).", "",
          "## Scalars", "",
          f"- ||E g|| = {d['norm_Eg']:.4e};  mu2 = ||E g||^2 = {mu2:.4e} (jackknife SE {d['jackknife']['mu2_se']:.2e})",
          f"- tr Cov(g) per microbatch = {tr:.4e} (jackknife SE {d['jackknife']['tr_se']:.2e});  per-microbatch std = {d['std_g_per_microbatch']:.4e}",

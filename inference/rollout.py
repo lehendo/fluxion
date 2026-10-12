@@ -274,7 +274,7 @@ def load_z0_from_latents(
     if not pair_path.exists():
         raise FileNotFoundError(
             f"pair.pt not found for {protein_id}.  "
-            "Run extract_pairs.slurm first."
+            "Run slurm/extraction/extract_pairs.slurm first."
         )
     pair = torch.load(pair_path, weights_only=True).float()  # [L, L, d_pair]
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 # TMLR Phase 3a: one arm per job. Usage:
-#   ARM=uniform T_DIST=uniform STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
-#   ARM=beta    T_DIST=beta BETA_A=0.25 BETA_B=0.25 STEPS=N sbatch --export=ALL scripts/phase3_train.sbatch
+#   ARM=uniform T_DIST=uniform STEPS=N sbatch --export=ALL slurm/training/phase3_train.sbatch
+#   ARM=beta    T_DIST=beta BETA_A=0.25 BETA_B=0.25 STEPS=N sbatch --export=ALL slurm/training/phase3_train.sbatch
 # On IllinoisComputes-GPU (3-day cap) override: sbatch --partition=IllinoisComputes-GPU --gres=gpu:1 --time=3-00:00:00 with TIME_LIMIT_MIN=4200.
 # EXTRA_ARGS: extra trainer flags (arm 3c: --lr 1.414e-4 --warmup-steps 5600 --ema-decay 0.99994 --ckpt-interval 2000 --monitor-interval 1600 --log-interval 160).
 # RESUBMIT_OPTS: the same command-line overrides used for the first submission (partition/gres/constraint/time/job-name), re-applied when the job requeues itself.

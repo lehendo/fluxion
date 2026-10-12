@@ -1,5 +1,5 @@
 #!/bin/bash
-# Evaluate arm 3c (bs16) alone at one milestone with the same pre-registered protocol (frames, seed, alpha fit are deterministic and match the uniform/beta evaluation). Usage: M=100 sbatch --export=ALL scripts/phase3_eval_3c.sbatch
+# Evaluate arm 3c (bs16) alone at one milestone with the same pre-registered protocol (frames, seed, alpha fit are deterministic and match the uniform/beta evaluation). Usage: M=100 sbatch --export=ALL slurm/evaluation/phase3_eval_3c.sbatch
 #SBATCH --job-name=p3_3c_eval
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic

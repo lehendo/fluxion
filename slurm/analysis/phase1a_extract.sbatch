@@ -1,6 +1,6 @@
 #!/bin/bash
 # Phase 1A row-cache extraction, one array task per protein (19 total).
-# Override for a smoke test:  sbatch --array=0 --export=ALL,SMOKE=1 scripts/phase1a_extract.sbatch
+# Override for a smoke test:  sbatch --array=0 --export=ALL,SMOKE=1 slurm/analysis/phase1a_extract.sbatch
 #SBATCH --job-name=p1a_extract
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic

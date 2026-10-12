@@ -1,5 +1,5 @@
 #!/bin/bash
-# One milestone, both arms, on the secondary partition (4 h cap). Usage: M=100 sbatch --export=ALL scripts/phase3_eval_one.sbatch
+# One milestone, both arms, on the secondary partition (4 h cap). Usage: M=100 sbatch --export=ALL slurm/evaluation/phase3_eval_one.sbatch
 #SBATCH --job-name=p3_eval1
 #SBATCH --partition=secondary
 #SBATCH --account=jimeng-ic

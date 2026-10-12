@@ -147,7 +147,7 @@ class TestComputePositionMeanBaseline:
         assert result["position_mean_mse"] <= result["zero_baseline_mse"] + 1e-6
 
     def test_longer_lag_reveals_signal_buried_in_short_lag_noise(self, tmp_path):
-        """This is the exact mechanism scripts/sweep_lag_baseline.sh is built
+        """This is the exact mechanism slurm/analysis/sweep_lag_baseline.sh is built
         to detect: a small constant per-step position-specific drift, buried
         under large per-step independent noise. At lag=1 the noise dominates
         and the drift is barely detectable; the drift accumulates linearly
