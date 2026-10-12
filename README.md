@@ -1,5 +1,7 @@
 # Fluxion
 
+**This project is currently under review at a journal. The manuscript will be made available on arXiv in the coming weeks. The results will be publicly available when the manuscript is made public. This public repository is still unfinished, and the finished version will be made public soon.**
+
 Flow matching in the latent space of a frozen protein structure predictor, for modeling protein conformational dynamics.
 
 Fluxion takes molecular dynamics (MD) trajectories, encodes every frame with the trunk of a pretrained structure-prediction model ([Chai-1](https://www.chaidiscovery.com/)), and trains a diffusion transformer with conditional flow matching directly on those latents. Generated latents can be decoded back to 3D structure with Chai-1's own diffusion module. The structure predictor is never fine-tuned.
