@@ -159,3 +159,56 @@ class TestDecodeAtomName:
 
     def test_strips_padding(self):
         assert decode_atom_name(encode_atom_name("N")) == "N"
+
+
+class TestFrameVarianceGate:
+    """The gate that stops extraction when coordinate injection has gone inert (every frame -> the same latent)."""
+
+    def test_distinct_frames_pass_and_return_the_mean_difference(self):
+        import torch
+        from data_pipeline.frame_variance import check_frame_variance
+        a, b = torch.zeros(1, 4, 8), torch.full((1, 4, 8), 0.5)
+        assert abs(check_frame_variance(a, b, 500) - 0.5) < 1e-6
+
+    def test_identical_frames_fail_loudly(self):
+        import pytest, torch
+        from data_pipeline.frame_variance import check_frame_variance
+        a = torch.randn(1, 4, 8)
+        with pytest.raises(RuntimeError, match="Frame-variance gate failed"):
+            check_frame_variance(a, a.clone(), 500)
+
+    def test_error_names_the_frame_and_the_measured_difference(self):
+        import pytest, torch
+        from data_pipeline.frame_variance import check_frame_variance
+        a = torch.zeros(2, 3)
+        with pytest.raises(RuntimeError) as e:
+            check_frame_variance(a, a + 1e-4, 37)
+        assert "frame 37" in str(e.value) and "mean|diff|=0.000100" in str(e.value)
+
+    def test_threshold_boundary(self):
+        import pytest, torch
+        from data_pipeline.frame_variance import check_frame_variance, FRAME_VARIANCE_MIN
+        a = torch.zeros(10)
+        check_frame_variance(a, a + FRAME_VARIANCE_MIN * 1.01, 1)               # just above: passes
+        with pytest.raises(RuntimeError):
+            check_frame_variance(a, a + FRAME_VARIANCE_MIN * 0.99, 1)           # just below: fails
+
+    def test_a_constant_offset_still_counts_as_variance(self):
+        import torch
+        from data_pipeline.frame_variance import check_frame_variance
+        a = torch.randn(1, 5, 6)
+        check_frame_variance(a, a + 1.0, 2)                                     # mean|diff| = 1: the gate measures change, not correlation
+
+    def test_bf16_inputs_are_handled(self):
+        import pytest, torch
+        from data_pipeline.frame_variance import check_frame_variance
+        a = torch.zeros(4, 4, dtype=torch.bfloat16)
+        assert check_frame_variance(a, a + 0.25, 9) > 0.2
+        with pytest.raises(RuntimeError):
+            check_frame_variance(a, a.clone(), 9)
+
+    def test_shape_mismatch_is_an_error_not_a_silent_pass(self):
+        import pytest, torch
+        from data_pipeline.frame_variance import check_frame_variance
+        with pytest.raises(ValueError):
+            check_frame_variance(torch.zeros(1, 4, 8), torch.zeros(1, 5, 8), 3)

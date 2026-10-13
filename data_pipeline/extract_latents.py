@@ -52,6 +52,7 @@ from filelock import FileLock
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from data_pipeline.frame_variance import check_frame_variance  # noqa: E402
 from data_pipeline.chai1_conditioning import (  # noqa: E402
     build_atom_correspondence,
     inject_frame_conditioning,
@@ -481,17 +482,9 @@ def extract(args: argparse.Namespace) -> None:
         check_ctx = inject_frame_conditioning(base_context, all_atoms.positions.copy(), chai_to_mda)
         s_check, _ = run_trunk_pipeline(check_ctx, loaded_modules, device, num_trunk_recycles=args.num_trunk_recycles, low_memory=args.low_memory)
         del check_ctx
-        mean_abs_diff = (s0 - s_check).abs().mean().item()
+        mean_abs_diff = check_frame_variance(s0, s_check, variance_check_frame)
         log.info("  frame-variance check: frame 0 vs frame %d, single mean|diff|=%.4f",
                   variance_check_frame, mean_abs_diff)
-        if mean_abs_diff < 1e-2:
-            del s0, s_check
-            raise RuntimeError(
-                f"Frame-variance gate failed: frame 0 and frame {variance_check_frame} "
-                f"produced near-identical trunk output (mean|diff|={mean_abs_diff:.6f}). "
-                f"Coordinate injection is very likely inert again — refusing to extract "
-                f"a degenerate dataset. See docs/code_review_2026-08.md Sec 1."
-            )
         del s_check
     del s0
 
