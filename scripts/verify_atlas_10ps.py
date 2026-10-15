@@ -43,7 +43,7 @@ def main() -> None:
         d = a.full_root / p
         if not (d / ".complete").exists():
             report[p] = {"status": "NOT FETCHED", "pass": False}; failed.append(p); print(f"{p:8s} NOT FETCHED"); continue
-        e = meta[p]; real_atoms = {v["real_atoms"] for v in e["replicas"].values()}
+        e = meta[p]; real_atoms = {v["real_atoms"] for v in e["replicas"].values()}      # log schema: meta[p]["replicas"][r] = {n_residues, real_atoms, traj_frames, ...}
         pdb, xtcs = find_files(d, p)
         pu = mda.Universe(str(pdb)); prot = pu.select_atoms("protein")
         ok_i = len(prot.residues) == e["n_residues"] and {prot.n_atoms} == real_atoms
