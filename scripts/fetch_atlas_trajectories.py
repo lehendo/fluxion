@@ -84,6 +84,16 @@ def verify_and_extract(zip_path: Path, out_dir: Path) -> dict:
     return {"members": names}
 
 
+def shard_proteins(sizes: dict[str, int], index: int, n: int) -> list[str]:
+    """Deterministic size-balanced split of proteins into n shards (greedy, largest first); returns shard `index`."""
+    bins: list[list[str]] = [[] for _ in range(n)]
+    load = [0] * n
+    for p in sorted(sizes, key=lambda k: (-sizes[k], k)):
+        j = min(range(n), key=lambda b: (load[b], b))
+        bins[j].append(p); load[j] += sizes[p]
+    return sorted(bins[index])
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -98,12 +108,16 @@ def main() -> None:
     ap.add_argument("--proteins", nargs="+", default=PILOT)
     ap.add_argument("--base", default=BASE)
     ap.add_argument("--chunk-mb", type=int, default=32)
+    ap.add_argument("--shard", type=int, nargs=2, metavar=("INDEX", "N"), default=None, help="download only shard INDEX of N size-balanced shards (run N tasks in parallel: the server limits each connection)")
     a = ap.parse_args()
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = a.out_dir / "fetch_meta.json"
-    meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    (a.out_dir / "meta").mkdir(exist_ok=True)
     s = requests.Session()
-    for p in a.proteins:
+    proteins = a.proteins
+    if a.shard:
+        proteins = shard_proteins({p: total_size(f"{a.base}/{p}", s)[0] for p in a.proteins}, a.shard[0], a.shard[1])
+        print(f"[fetch] shard {a.shard[0]}/{a.shard[1]}: {proteins}", flush=True)
+    for p in proteins:
         d = a.out_dir / p
         if (d / ".complete").exists():
             print(f"[fetch] {p}: already complete", flush=True); continue
@@ -114,8 +128,7 @@ def main() -> None:
             import shutil; shutil.rmtree(d)
         info.update(verify_and_extract(zp, d))
         (d / ".complete").write_text("ok")
-        meta[p] = info
-        meta_path.write_text(json.dumps(meta, indent=1))
+        (a.out_dir / "meta" / f"{p}.json").write_text(json.dumps(info, indent=1))       # one file per protein: parallel tasks never share a file
         print(f"[fetch] {p}: {info['bytes'] / 1e6:.0f} MB in {info['seconds']} s, members {info['members']}", flush=True)
     print("[fetch] all done", flush=True)
 

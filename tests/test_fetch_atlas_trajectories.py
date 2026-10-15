@@ -123,3 +123,14 @@ def test_sha256_matches_hashlib(tmp_path):
     import hashlib
     p = tmp_path / "f"; p.write_bytes(b"abc" * 1000)
     assert sha256(p) == hashlib.sha256(b"abc" * 1000).hexdigest()
+
+
+def test_shards_are_disjoint_complete_and_size_balanced():
+    from scripts.fetch_atlas_trajectories import shard_proteins
+    sizes = {"a": 1356, "b": 896, "c": 641, "d": 625, "e": 547, "f": 486, "g": 396, "h": 347, "i": 292, "j": 291, "k": 259, "l": 205, "m": 205, "n": 167, "o": 143, "p": 143, "q": 115, "r": 112, "s": 91}
+    parts = [shard_proteins(sizes, i, 5) for i in range(5)]
+    flat = [p for part in parts for p in part]
+    assert sorted(flat) == sorted(sizes) and len(flat) == len(set(flat))
+    loads = [sum(sizes[p] for p in part) for part in parts]
+    assert max(loads) - min(loads) <= max(sizes.values())          # greedy bound
+    assert parts == [shard_proteins(sizes, i, 5) for i in range(5)]    # deterministic
