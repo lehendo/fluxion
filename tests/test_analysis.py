@@ -352,3 +352,33 @@ class TestRidgeDiag:
         tr0 = torch.randn(20000, 4); tr1 = 0.8 * tr0 + 0.05 * torch.randn(20000, 4)
         va0 = torch.randn(5000, 4); va1 = 0.8 * va0 + 0.05 * torch.randn(5000, 4)
         assert select_ridge_strength(tr0, tr1, va0, va1) <= 0.01
+
+
+class TestSuperposedRmsd:
+    def test_rotated_translated_copy_has_zero_rmsd(self):
+        import numpy as np
+        from analysis.geometry import superposed_rmsd
+        rng = np.random.default_rng(0)
+        a = rng.standard_normal((40, 3)) * 5
+        th = 0.7; R = np.array([[np.cos(th), -np.sin(th), 0], [np.sin(th), np.cos(th), 0], [0, 0, 1]])
+        b = a @ R.T + np.array([3.0, -2.0, 10.0])
+        assert superposed_rmsd(a, b) < 1e-9
+
+    def test_known_displacement_is_recovered(self):
+        import numpy as np
+        from analysis.geometry import superposed_rmsd
+        rng = np.random.default_rng(1)
+        a = rng.standard_normal((200, 3)) * 5
+        noise = rng.standard_normal((200, 3)) * 0.3
+        b = a + noise
+        r = superposed_rmsd(a, b)
+        assert 0.0 < r <= np.sqrt((noise ** 2).sum(-1).mean()) + 1e-9        # superposition can only reduce the unaligned RMSD
+        assert abs(r - np.sqrt((noise ** 2).sum(-1).mean())) < 0.03
+
+    def test_mirror_image_is_not_aligned_by_a_reflection(self):
+        import numpy as np
+        from analysis.geometry import superposed_rmsd
+        rng = np.random.default_rng(2)
+        a = rng.standard_normal((50, 3)) * 5
+        b = a * np.array([-1.0, 1.0, 1.0])
+        assert superposed_rmsd(a, b) > 1.0

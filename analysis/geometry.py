@@ -29,6 +29,12 @@ def kabsch_align(X: np.ndarray, ref: np.ndarray) -> np.ndarray:
     return np.einsum("nad,nde->nae", Xc, R) + ref.mean(0, keepdims=True)
 
 
+def superposed_rmsd(a: np.ndarray, b: np.ndarray) -> float:
+    """RMSD between two conformations a, b [L, 3] after optimal superposition of a onto b (rotation + translation)."""
+    aligned = kabsch_align(a[None], b)[0]
+    return float(np.sqrt(((aligned - b) ** 2).sum(-1).mean()))
+
+
 def pca_scores(Xtr, Xall, k: int, chunk: int = 500):
     """Scores of Xall on the top-k principal axes of Xtr (torch tensors, rows = frames), via the Gram matrix of the
     centered training frames (no D x D covariance; float32 products, double only for the small Gram eigenproblem)."""
