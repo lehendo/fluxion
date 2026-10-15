@@ -25,9 +25,10 @@ from scipy import stats
 from torch.utils.data import DataLoader
 
 from training.dit_model import FluxionDiT
-from training.phase3_data import PAD_TO, build_datasets, collate, entry_of, load_pair_store
+from training.phase3_data import PAD_TO, build_datasets, collate, entry_of, load_pair_store, n_real_table, real_mask_from
 
 N_FRAMES = 400
+REAL_N = None          # LongTensor protein index -> real residue count; set in main(); scoring always uses REAL tokens, whatever mask the model was trained with
 N_FRAMES_IN_SAMPLE = 100
 T_LO, T_HI = 0.01, 0.99
 T_GRID = np.linspace(T_LO, T_HI, 41)
@@ -60,6 +61,12 @@ def integrate(model, z0, pairs_b, mask, steps: int):
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=z.is_cuda):
             z = z + model(z, pairs_b, t, mask).float() / steps
     return z
+
+
+def score_valid(pi, mask):
+    """[B, L, 1] float: 1 on REAL tokens. Falls back to the model mask when no real-residue table is set."""
+    m = real_mask_from(pi, REAL_N, mask.shape[1]) if REAL_N is not None else mask
+    return (~m).float().unsqueeze(-1)
 
 
 def close_handles(ds) -> None:
@@ -104,7 +111,7 @@ def flow_loss_curves(ds, pairs, models, dev, seed: int, n_frames: int):
     idx = torch.randperm(len(ds), generator=g)[:n_frames].tolist()
     for batch in DataLoader([ds[i] for i in idx], batch_size=16, shuffle=False, collate_fn=collate):
         z0, z1, pi, mask = (x.to(dev) for x in batch)
-        valid = (~mask).float().unsqueeze(-1); pb = pairs[pi]; u = z1 - z0
+        valid = score_valid(pi, mask); pb = pairs[pi]; u = z1 - z0
         den += float(((u ** 2) * valid).sum())
         for ti, t in enumerate(T_GRID):
             tt = torch.full((z0.shape[0],), float(t), device=dev)
@@ -121,9 +128,11 @@ def score_protein(ds, pairs, models, alpha, a, k, dev, seed: int, arm: str):
     sums = {}
     for z0, z1, pi, mask in sample_batches(ds, N_FRAMES, seed, 16):
         z0, z1, pi, mask = z0.to(dev), z1.to(dev), pi.to(dev), mask.to(dev)
-        valid = (~mask).float().unsqueeze(-1)
+        valid = score_valid(pi, mask)
         pb = pairs[pi]
-        preds = {"identity": z0, "shrink": alpha * z0, "linear_diag": a + k * z0}
+        preds = {"identity": z0}
+        if alpha is not None:
+            preds.update({"shrink": alpha * z0, "linear_diag": a + k * z0})
         for mname, m in models.items():
             for steps in STEPS:
                 preds[f"dit_{arm}_{mname}_n{steps}"] = integrate(m, z0, pb, mask, steps)
@@ -148,6 +157,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--steps", type=int, nargs="+", default=list(STEPS), help="Euler step counts for the downstream readout")
+    ap.add_argument("--no-baselines", action="store_true", help="skip the alpha*z0 / per-channel baselines (they live in centered coordinates; use for arms trained UNCENTERED and read the baselines from the centered evaluation)")
     ap.add_argument("--skip-flow", action="store_true", help="skip the flow-loss curves (cheap integration-step sweep only)")
     ap.add_argument("--groups", nargs="+", default=["held_out", "in_sample"], choices=["held_out", "in_sample"])
     a = ap.parse_args()
@@ -159,10 +169,21 @@ def main() -> None:
     all_p = train_p + held_p; index_of = {p: i for i, p in enumerate(all_p)}
     ns = torch.load(a.latents_dir / "norm_stats.pt", weights_only=True)
     pairs = load_pair_store(a.latents_dir, all_p, dev)
-    tr = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, train_p, index_of, ns)
-    ho = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, held_p, index_of, ns)
-    alpha, ba, bk = fit_baselines(tr, dev, a.seed)
-    print(f"[eval] alpha (training entries) = {alpha:.4f}", flush=True)
+    flags = {(c.get("uncentered") == "True", c.get("pad_unmasked") == "True") for c in cfgs}
+    assert len(flags) == 1, "arms must share centering and masking settings (evaluate arms with different settings in separate runs)"
+    unc, padun = flags.pop()
+    tr = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, train_p, index_of, ns, center=not unc, mask_real=not padun)
+    ho = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, held_p, index_of, ns, center=not unc, mask_real=not padun)
+    global REAL_N
+    REAL_N = n_real_table(tr, ho)
+    if a.no_baselines:
+        alpha, ba, bk = None, None, None
+        print(f"[eval] baselines skipped (arm coordinates: uncentered={unc}, pad_unmasked={padun}); scoring on REAL tokens", flush=True)
+    else:
+        if unc:
+            raise SystemExit("shrinkage baselines are defined in centered coordinates; pass --no-baselines for an uncentered arm")
+        alpha, ba, bk = fit_baselines(tr, dev, a.seed)
+        print(f"[eval] alpha (training entries) = {alpha:.4f}  (pad_unmasked={padun})", flush=True)
     arms = {}
     for name, ck in a.arm:
         arms[name] = load_models(Path(ck), dev); print(f"[eval] arm {name}: step {arms[name][1]} t_cfg {arms[name][2]}", flush=True)
@@ -209,7 +230,7 @@ def main() -> None:
     partial = a.out.with_suffix(".partial.json")
     if partial.exists():                                              # resume: skip proteins already scored (the job can be killed at a wall limit)
         old = json.loads(partial.read_text())
-        if old.get("arms_steps") == res["arms_steps"] and abs(old.get("alpha", -1) - alpha) < 1e-9:
+        if old.get("arms_steps") == res["arms_steps"] and ((old.get("alpha") is None and alpha is None) or (old.get("alpha") is not None and alpha is not None and abs(old["alpha"] - alpha) < 1e-9)):
             res["per_protein"], res["flow"] = old["per_protein"], old["flow"]
             print(f"[eval] resumed {len(res['per_protein'])} proteins from {partial}", flush=True)
     for group, dss in [(g, d) for g, d in (("held_out", ho), ("in_sample", tr)) if g in a.groups]:

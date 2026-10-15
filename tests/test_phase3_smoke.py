@@ -226,3 +226,71 @@ class TestEvalResume:
         again = json.loads(res.read_text())
         assert set(again["per_protein"]) == set(full["per_protein"])
         assert again["per_protein"]["held_out:1bbb_A"]["pct_vs_identity"] == full["per_protein"]["held_out:1bbb_A"]["pct_vs_identity"]     # resumed protein not recomputed
+
+
+class TestT3Modes:
+    """T3: arms trained uncentered and/or with padding counted must still be SCORED on real tokens, in the same units as the centered/masked arms."""
+
+    def _stores(self, tmp_path):
+        proteins = ["1aaa_A", "1bbb_A"]
+        lat = make_store(tmp_path, proteins)
+        meansd = tmp_path / "mean"; meansd.mkdir()
+        ns = torch.load(lat / "norm_stats.pt", weights_only=True)
+        for p in proteins:
+            torch.save(per_position_mean(LatentDataset(lat, p, load_pair=False, norm_stats=ns, lag=1), 1), meansd / f"{p}.pt")
+        return lat, meansd, ns
+
+    def test_dataset_flags(self, tmp_path, monkeypatch):
+        from training.phase3_data import CenteredLagPairs, collate, n_real_table, real_mask_from
+        monkeypatch.setattr(phase3_data, "PAD_TO", 24)
+        lat, meansd, ns = self._stores(tmp_path)
+        mp = torch.load(meansd / "1aaa_A.pt", weights_only=True)
+        base = CenteredLagPairs(lat, "1aaa_A", 0, mp, N_RES, ns)
+        unc = CenteredLagPairs(lat, "1aaa_A", 0, mp, N_RES, ns, center=False, mask_real=False)
+        z0c, z1c, _, n_c = base[0]; z0u, z1u, _, n_u = unc[0]
+        assert n_c == N_RES and n_u == L_BUCKET and unc.n_res == N_RES                       # model mask covers the bucket only; real count preserved for scoring
+        assert torch.allclose(z0u - z0c, mp, atol=1e-5) and torch.allclose(z1u - z1c, mp, atol=1e-5)   # same frames, shifted by exactly the per-position mean
+        z0, z1, pi, mask = collate([unc[0]])
+        assert (~mask[0]).sum() == L_BUCKET and mask[0, L_BUCKET:].all()                    # padding tokens are 'valid' to the model
+        smask = real_mask_from(pi, n_real_table({"a": unc}), 24)
+        assert (~smask[0]).sum() == N_RES                                                    # but the scoring mask is the real one
+
+    def test_identity_error_is_independent_of_training_coordinates_and_mask(self, tmp_path, monkeypatch):
+        import training.train_t3 as t3
+        import scripts.phase3_eval as ev
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        helper = TestDivergenceGuard()
+        base = helper._argv(tmp_path, tmp_path / "c", ["--guard-ratio", "0"])            # builds the synthetic store once
+        base[base.index("--max-steps") + 1] = "4"
+        lat, meansd = tmp_path / "latents", tmp_path / "mean"
+        res = {}
+        for tag, extra in (("c", []), ("u", ["--uncentered", "--pad-unmasked"])):
+            out = tmp_path / tag
+            argv = list(base); argv[argv.index("--out-dir") + 1] = str(out); argv += extra
+            monkeypatch.setattr(sys, "argv", argv); t3.main()
+            cfg = json.loads((out / "config.json").read_text())
+            assert (cfg["uncentered"] == "True") == (tag == "u") and (cfg["pad_unmasked"] == "True") == (tag == "u")
+            monkeypatch.setattr(ev, "N_FRAMES", 6); monkeypatch.setattr(ev, "N_FRAMES_IN_SAMPLE", 6)
+            outj = tmp_path / f"{tag}.json"
+            cmd = ["phase3_eval", "--latents-dir", str(lat), "--meta-json", str(tmp_path / "meta.json"), "--mean-dir", str(meansd), "--arm", tag, str(out / "checkpoint.pt"), "--out", str(outj), "--skip-flow"]
+            if tag == "u":
+                cmd += ["--no-baselines"]
+            monkeypatch.setattr(sys, "argv", cmd); ev.main()
+            res[tag] = json.loads(outj.read_text())
+        for k in res["c"]["per_protein"]:
+            a, b = res["c"]["per_protein"][k]["mse"]["identity"], res["u"]["per_protein"][k]["mse"]["identity"]
+            assert abs(a - b) <= 1e-4 * abs(a), (k, a, b)                                    # same real-token identity MSE in both coordinate systems
+        assert "shrink" in res["c"]["per_protein"]["held_out:1bbb_A"]["mse"] and "shrink" not in res["u"]["per_protein"]["held_out:1bbb_A"]["mse"]
+        assert res["u"]["alpha"] is None
+
+    def test_uncentered_arm_requires_no_baselines_flag(self, tmp_path, monkeypatch):
+        import training.train_t3 as t3
+        import scripts.phase3_eval as ev
+        monkeypatch.setattr(phase3_data, "PAD_TO", 16)
+        helper = TestDivergenceGuard()
+        out = tmp_path / "u"
+        argv = helper._argv(tmp_path, out, ["--guard-ratio", "0", "--uncentered"]); argv[argv.index("--max-steps") + 1] = "2"
+        monkeypatch.setattr(sys, "argv", argv); t3.main()
+        monkeypatch.setattr(sys, "argv", ["phase3_eval", "--latents-dir", str(tmp_path / "latents"), "--meta-json", str(tmp_path / "meta.json"), "--mean-dir", str(tmp_path / "mean"), "--arm", "u", str(out / "checkpoint.pt"), "--out", str(tmp_path / "x.json")])
+        with pytest.raises(SystemExit, match="no-baselines"):
+            ev.main()

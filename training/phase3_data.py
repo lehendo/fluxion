@@ -58,10 +58,15 @@ class CenteredLagPairs(Dataset):
     Returns z0, z1 : [L_bucket, d] float32; the protein's index into the GPU pair store; n_res (real residues)."""
 
     def __init__(self, latents_dir: Path, protein: str, protein_index: int, mean_pos: torch.Tensor, n_res: int,
-                 norm_stats: dict, lag: int = 1):
+                 norm_stats: dict, lag: int = 1, center: bool = True, mask_real: bool = True):
+        """center=False leaves the latents uncentered (normalized only, as the original run saw them); mask_real=False makes the item's mask cover only
+        positions beyond the Chai-1 bucket, so bucket padding counts as ordinary tokens in the loss and attention (the original run's behaviour).
+        `n_res` always stays the real residue count (used for scoring); the mask length handed to collate is `n_mask`."""
         self.ds = LatentDataset(latents_dir, protein, load_pair=False, norm_stats=norm_stats, lag=lag)
         self.valid = [i for i in range(len(self.ds)) if self.ds._next_idx[i] != i]
-        self.mean_pos, self.pi, self.n_res, self.protein = mean_pos, protein_index, n_res, protein
+        self.mean_pos = mean_pos if center else torch.zeros_like(mean_pos)
+        self.pi, self.n_res, self.protein = protein_index, n_res, protein
+        self.n_mask = n_res if mask_real else self.ds._load_frame(0).shape[0]
 
     def __len__(self) -> int:
         return len(self.valid)
@@ -70,7 +75,7 @@ class CenteredLagPairs(Dataset):
         i = self.valid[k]
         z0 = self.ds._load_frame(i) - self.mean_pos
         z1 = self.ds._load_frame(self.ds._next_idx[i]) - self.mean_pos
-        return z0, z1, self.pi, self.n_res
+        return z0, z1, self.pi, self.n_mask
 
 
 def collate(batch, pad_to: int | None = None):
@@ -98,9 +103,24 @@ def load_pair_store(latents_dir: Path, proteins: list[str], device, pad_to: int 
     return torch.stack(out).to(device)
 
 
-def build_datasets(latents_dir: Path, meta_json: Path, mean_dir: Path, proteins: list[str], index_of: dict[str, int], norm_stats: dict):
+def build_datasets(latents_dir: Path, meta_json: Path, mean_dir: Path, proteins: list[str], index_of: dict[str, int], norm_stats: dict,
+                   center: bool = True, mask_real: bool = True):
     out = {}
     for p in proteins:
         mp = torch.load(Path(mean_dir) / f"{p}.pt", weights_only=True)
-        out[p] = CenteredLagPairs(latents_dir, p, index_of[p], mp, n_residues(meta_json, p), norm_stats)
+        out[p] = CenteredLagPairs(latents_dir, p, index_of[p], mp, n_residues(meta_json, p), norm_stats, center=center, mask_real=mask_real)
     return out
+
+
+def n_real_table(*dataset_groups: dict) -> torch.Tensor:
+    """LongTensor indexed by protein index giving the REAL residue count (independent of whether the model mask is real or bucket-only)."""
+    pairs = {ds.pi: ds.n_res for g in dataset_groups for ds in g.values()}
+    t = torch.zeros(max(pairs) + 1, dtype=torch.long)
+    for k, v in pairs.items():
+        t[k] = v
+    return t
+
+
+def real_mask_from(pi: torch.Tensor, n_real: torch.Tensor, length: int) -> torch.Tensor:
+    """[B, length] bool, True = padding / ignore, from protein indices and the real-residue table (used for SCORING regardless of the training mask)."""
+    return torch.arange(length, device=pi.device)[None, :] >= n_real.to(pi.device)[pi][:, None]

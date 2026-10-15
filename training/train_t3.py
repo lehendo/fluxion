@@ -40,7 +40,7 @@ from torch.utils.data import ConcatDataset, DataLoader, RandomSampler
 
 from training.dit_model import FluxionDiT
 from training.flow_matching import FlowMatcher
-from training.phase3_data import PAD_TO, build_datasets, collate, load_pair_store, split_proteins
+from training.phase3_data import PAD_TO, build_datasets, collate, load_pair_store, n_real_table, real_mask_from, split_proteins
 from training.train import get_param_groups, update_ema
 
 
@@ -49,12 +49,13 @@ def build_model(a) -> FluxionDiT:
 
 
 @torch.no_grad()
-def one_step_improvement(model, batch, pairs, device, t0: float = 0.01) -> float:
+def one_step_improvement(model, batch, pairs, device, t0: float = 0.01, n_real=None) -> float:
     """100 * (1 - MSE(z0 + v(z0, t0)) / MSE(z0)) over real tokens of a fixed held-out batch (t0 = the lower clip, the smallest t the model is trained at)."""
     z0, z1, pi, mask = (x.to(device) for x in batch)
     with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
         v = model(z0, pairs[pi], torch.full((z0.shape[0],), t0, device=device), mask)
-    valid = (~mask).float().unsqueeze(-1)
+    smask = real_mask_from(pi, n_real, z0.shape[1]) if n_real is not None else mask           # SCORE on real tokens whatever the training mask is
+    valid = (~smask).float().unsqueeze(-1)
     e_id = (((z1 - z0) ** 2) * valid).sum()
     e_m = (((z1 - (z0 + v.float())) ** 2) * valid).sum()
     return float(100 * (1 - e_m / e_id))
@@ -80,6 +81,8 @@ def main() -> None:
     ap.add_argument("--t-mode", choices=["clamp", "truncate"], default="clamp")
     ap.add_argument("--stop-after", type=int, default=0, help="stop (and write diagnostic_summary.json) after this many optimizer steps while keeping the --max-steps schedule (diagnostic only)")
     ap.add_argument("--t-clip", type=float, nargs=2, default=[0.01, 0.99])
+    ap.add_argument("--uncentered", action="store_true", help="T3: do NOT subtract the per-position mean (the original run's coordinates)")
+    ap.add_argument("--pad-unmasked", action="store_true", help="T3: mask only positions beyond the Chai-1 bucket, so padding counts as tokens in loss/attention (the original run's behaviour)")
     ap.add_argument("--gate-lr-multiplier", type=float, default=10.0)
     ap.add_argument("--weight-decay", type=float, default=1e-5)
     ap.add_argument("--warmup-steps", type=int, default=350)
@@ -121,8 +124,9 @@ def main() -> None:
     (a.out_dir / "config.json").write_text(json.dumps({**{k: str(v) for k, v in vars(a).items()}, "train": train_p, "held_out": held_p}, indent=1))
 
     pairs = load_pair_store(a.latents_dir, all_p, dev)
-    tr = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, train_p, index_of, ns)
-    ho = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, held_p, index_of, ns)
+    tr = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, train_p, index_of, ns, center=not a.uncentered, mask_real=not a.pad_unmasked)
+    ho = build_datasets(a.latents_dir, a.meta_json, a.mean_dir, held_p, index_of, ns, center=not a.uncentered, mask_real=not a.pad_unmasked)
+    n_real = n_real_table(tr, ho)
     train_ds = ConcatDataset(list(tr.values()))
     g = torch.Generator().manual_seed(a.seed)
     loader = DataLoader(train_ds, batch_size=a.batch_size, sampler=RandomSampler(train_ds, replacement=True, num_samples=10**9, generator=g),
@@ -209,7 +213,7 @@ def main() -> None:
         if step % a.log_interval == 0:
             mon_ema = mon_raw = float("nan")
             if step % a.monitor_interval == 0:
-                model.eval(); mon_raw = one_step_improvement(model, mon, pairs, dev); mon_ema = one_step_improvement(ema, mon, pairs, dev); model.train()
+                model.eval(); mon_raw = one_step_improvement(model, mon, pairs, dev, n_real=n_real); mon_ema = one_step_improvement(ema, mon, pairs, dev, n_real=n_real); model.train()
             red = 100 * (1 - loss_acc / v0_acc)                      # live flow-loss reduction on training batches: 1 - L / L(v=0), same t distribution
             w.writerow([step, f"{loss_acc / n_acc:.6f}", f"{v0_acc / n_acc:.6f}", f"{red:.3f}", f"{sched.get_last_lr()[0]:.2e}", f"{gn_acc / n_acc:.5f}", f"{mon_ema:.3f}", f"{mon_raw:.3f}", f"{time.time() - t_start:.0f}"]); logf.flush()
             print(f"[t3] step {step} train loss {loss_acc / n_acc:.5f} (v=0: {v0_acc / n_acc:.5f}) live flow-loss reduction {red:+.2f}% | monitor held-out 1-step vs identity: ema {mon_ema:.2f}% raw {mon_raw:.2f}% ({time.time() - t_start:.0f}s)", flush=True)
