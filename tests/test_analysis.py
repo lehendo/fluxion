@@ -382,3 +382,21 @@ class TestSuperposedRmsd:
         a = rng.standard_normal((50, 3)) * 5
         b = a * np.array([-1.0, 1.0, 1.0])
         assert superposed_rmsd(a, b) > 1.0
+
+
+class TestPcaFitProject:
+    def test_streamed_projection_equals_pca_scores(self):
+        import torch
+        from analysis.geometry import pca_fit, pca_project, pca_scores
+        g = torch.Generator().manual_seed(0)
+        Xtr, Xall = torch.randn(60, 40, generator=g), torch.randn(130, 40, generator=g)
+        ref = pca_scores(Xtr, Xall, 7, chunk=17)
+        mu, comp = pca_fit(Xtr, 7)
+        streamed = torch.cat([pca_project(Xall[i:i + 31], mu, comp) for i in range(0, 130, 31)])
+        assert torch.allclose(ref, streamed, atol=1e-5)
+
+    def test_axes_are_orthonormal(self):
+        import torch
+        from analysis.geometry import pca_fit
+        mu, comp = pca_fit(torch.randn(50, 30), 5)
+        assert torch.allclose(comp.T @ comp, torch.eye(5), atol=1e-4)

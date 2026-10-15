@@ -35,14 +35,25 @@ def superposed_rmsd(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.sqrt(((aligned - b) ** 2).sum(-1).mean()))
 
 
-def pca_scores(Xtr, Xall, k: int, chunk: int = 500):
-    """Scores of Xall on the top-k principal axes of Xtr (torch tensors, rows = frames), via the Gram matrix of the
-    centered training frames (no D x D covariance; float32 products, double only for the small Gram eigenproblem)."""
+def pca_fit(Xtr, k: int):
+    """Top-k principal axes of Xtr (torch tensor, rows = frames) via the Gram matrix of the centered frames (no D x D covariance;
+    float32 products, double only for the small Gram eigenproblem). Returns (mean [1, D], unit-norm axes [D, k])."""
     import torch
     mu = Xtr.mean(0, keepdim=True)
     A = Xtr - mu
     w, V = torch.linalg.eigh((A @ A.T).double())
     idx = torch.argsort(w, descending=True)[:k]
     w, V = w[idx].clamp_min(1e-12), V[:, idx]
-    comp = (A.T @ V.float()) / w.sqrt().float()                       # [D, k], unit-norm axes
-    return torch.cat([(Xall[i:i + chunk] - mu) @ comp for i in range(0, Xall.shape[0], chunk)])
+    return mu, (A.T @ V.float()) / w.sqrt().float()
+
+
+def pca_project(X, mu, comp):
+    """Scores of the rows of X on axes fitted by pca_fit."""
+    return (X - mu) @ comp
+
+
+def pca_scores(Xtr, Xall, k: int, chunk: int = 500):
+    """Scores of Xall on the top-k principal axes of Xtr (torch tensors, rows = frames)."""
+    import torch
+    mu, comp = pca_fit(Xtr, k)
+    return torch.cat([pca_project(Xall[i:i + chunk], mu, comp) for i in range(0, Xall.shape[0], chunk)])
