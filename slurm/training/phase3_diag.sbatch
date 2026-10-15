@@ -2,6 +2,7 @@
 # TMLR Phase 3 stability diagnostic (pre-registered in experiments/EXPERIMENT_LOG.md): 4 conditions x 2 seeds, 600 optimizer steps each, with the SAME schedule as the 3a arms
 # (warmup 350, cosine over 6400) so peak LR falls inside the window; guard in RECORD mode (observe the excursion, do not halt).
 #   idx = 2*cond + seed;  cond 0=A uniform (peak LR)  1=B beta-clamp (peak LR)  2=C beta-truncate (peak LR)  3=D beta-clamp (half peak LR)
+#   4=E uniform (half peak LR)  [T1: the missing cell; run with --array=8-9]
 #SBATCH --job-name=p3_diag
 #SBATCH --partition=IllinoisComputes-GPU
 #SBATCH --account=jimeng-ic
@@ -20,13 +21,14 @@ conda activate fluxion
 cd /u/arjunc4/fluxion
 export MALLOC_ARENA_MAX=2
 C=$((SLURM_ARRAY_TASK_ID / 2)); S=$((SLURM_ARRAY_TASK_ID % 2))
-NAMES=(A B C D)
+NAMES=(A B C D E)
 PEAK=5.657e-4; HALF=2.828e-4
 case $C in
   0) ARGS="--t-dist uniform --lr $PEAK" ;;
   1) ARGS="--t-dist beta --t-mode clamp --lr $PEAK" ;;
   2) ARGS="--t-dist beta --t-mode truncate --lr $PEAK" ;;
   3) ARGS="--t-dist beta --t-mode clamp --lr $HALF" ;;
+  4) ARGS="--t-dist uniform --lr $HALF" ;;
 esac
 OUT=/scratch/arjunc4/fluxion_data/phase3/diag/${NAMES[$C]}_s${S}
 python training/train_t3.py --out-dir "$OUT" --max-steps 6400 --stop-after 600 --seed $S --batch-size 8 --accum 32 \
