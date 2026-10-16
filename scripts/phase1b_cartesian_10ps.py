@@ -42,6 +42,28 @@ def project_all(frames_fn, fit_idx, folds, k):
     return {h: {r: torch.cat(out[h][r]) for r in (1, 2, 3)} for h in folds}
 
 
+def load_frames(p: str, full_root: Path, metadata_json: Path, latents_dir: Path):
+    """Returns (n_res, k, chai_frames, cart_frames): functions (lo, hi, rep) -> [hi-lo, D] float tensors (latent frame j <-> 10 ps frame j)."""
+    d = full_root / p
+    n_res = n_residues(metadata_json, p); k = min(3 * n_res, 384)
+    pdb = sorted(x for x in d.rglob("*.pdb"))[0]
+    cart, ref = {}, None
+    for rep in (1, 2, 3):
+        u = mda.Universe(str(pdb), str(sorted(d.rglob(f"*R{rep}*.xtc"))[0])); ca = u.select_atoms("name CA")
+        X = np.stack([ca.positions.copy() for _ in u.trajectory])
+        assert X.shape[0] == N_FRAMES and X.shape[1] == n_res, (p, X.shape)
+        ref = X[0] if ref is None else ref
+        cart[rep] = torch.from_numpy(kabsch_align(X, ref).reshape(N_FRAMES, -1)).float()
+    ns = torch.load(latents_dir / "norm_stats.pt", weights_only=True)
+    ds = LatentDataset(latents_dir, p, load_pair=False, norm_stats=ns, lag=1)
+    sl = {}
+    for i, (path, _) in enumerate(ds.index_map):
+        c = int(re.sub(r"\D", "", _REPLICA_RE.search(path.name).group(1))); sl.setdefault(c, [i, i + 1])[1] = i + 1
+    chai_frames = lambda lo, hi, rep: torch.stack([ds._load_frame(sl[rep][0] + j)[:n_res].flatten() for j in range(lo, hi)])
+    cart_frames = lambda lo, hi, rep: cart[rep][lo:hi]
+    return n_res, k, chai_frames, cart_frames
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--protein", required=True)
@@ -55,22 +77,7 @@ def main() -> None:
     v = json.loads(a.verification.read_text())["per_protein"].get(p, {})
     if not v.get("pass"):
         print(f"[b1-10ps] {p}: SKIPPED (did not pass (i)-(iii) of the 10 ps verification: {v})", flush=True); return
-    n_res = n_residues(a.metadata_json, p); k = min(3 * n_res, 384)
-    pdb = sorted(x for x in d.rglob("*.pdb"))[0]
-    cart, ref = {}, None
-    for rep in (1, 2, 3):
-        u = mda.Universe(str(pdb), str(sorted(d.rglob(f"*R{rep}*.xtc"))[0])); ca = u.select_atoms("name CA")
-        X = np.stack([ca.positions.copy() for _ in u.trajectory])
-        assert X.shape[0] == N_FRAMES and X.shape[1] == n_res, (p, X.shape)
-        ref = X[0] if ref is None else ref
-        cart[rep] = torch.from_numpy(kabsch_align(X, ref).reshape(N_FRAMES, -1)).float()
-    ns = torch.load(a.latents_dir / "norm_stats.pt", weights_only=True)
-    ds = LatentDataset(a.latents_dir, p, load_pair=False, norm_stats=ns, lag=1)
-    sl = {}
-    for i, (path, _) in enumerate(ds.index_map):
-        c = int(re.sub(r"\D", "", _REPLICA_RE.search(path.name).group(1))); sl.setdefault(c, [i, i + 1])[1] = i + 1
-    chai_frames = lambda lo, hi, rep: torch.stack([ds._load_frame(sl[rep][0] + j)[:n_res].flatten() for j in range(lo, hi)])
-    cart_frames = lambda lo, hi, rep: cart[rep][lo:hi]
+    n_res, k, chai_frames, cart_frames = load_frames(p, a.full_root, a.metadata_json, a.latents_dir)
     fit_idx = list(range(0, N_FRAMES, FIT_STRIDE))
     print(f"[b1-10ps] {p}: n_res={n_res} k={k}", flush=True)
     res = {"protein": p, "n_res": n_res, "k": k, "lags": {}}
