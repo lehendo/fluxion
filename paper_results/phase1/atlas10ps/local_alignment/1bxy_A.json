@@ -1,0 +1,48 @@
+{
+ "per_protein": {
+  "1bxy_A": {
+   "replicas": {
+    "R1": {
+     "aligned": 0.4494406134406135,
+     "max_control": 0.09006052206052206,
+     "margin": 0.3593800913800914,
+     "pass": true,
+     "cross_replica": [
+      -0.041356613356613364,
+      0.032655884655884655
+     ],
+     "half_window_shift": 0.09006052206052206
+    },
+    "R2": {
+     "aligned": 0.5437557517557517,
+     "max_control": 0.05616501216501217,
+     "margin": 0.48759073959073956,
+     "pass": true,
+     "cross_replica": [
+      0.02697900297900298,
+      -0.018812622812622814
+     ],
+     "half_window_shift": 0.05616501216501217
+    },
+    "R3": {
+     "aligned": 0.5211219291219291,
+     "max_control": 0.01785960585960586,
+     "margin": 0.5032623232623232,
+     "pass": true,
+     "cross_replica": [
+      0.01785960585960586,
+      -0.01920877920877921
+     ],
+     "half_window_shift": -0.020100728100728105
+    }
+   },
+   "pass": true
+  }
+ },
+ "criteria": {
+  "min_aligned": 0.2,
+  "min_margin": 0.15,
+  "offset_steps": 100,
+  "n_pairs": 1000
+ }
+}

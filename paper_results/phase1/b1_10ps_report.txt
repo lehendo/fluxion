@@ -1,0 +1,63 @@
+proteins with B1-10ps results: 19; iii-L passes: ['1ab1_A', '1aol_A', '1b0n_A', '1b2s_E', '1b2s_F', '1bq8_A', '1btk_A', '1bxy_A', '1bxy_B']
+sets: SET13: 13 proteins / 11 entries; UNION: 14 proteins / 12 entries
+PRIMARY FAMILY (10 ps; {linear_diag, shrink} x sets), Bonferroni m = 4 -> level 98.75%
+  SET13  linear_diag  10ps  Chai - Cart =  +9.14 [ +3.40, +15.41]   Bonferroni [ +2.21, +17.33]   entries>0: 9/11
+  SET13  shrink       10ps  Chai - Cart =  +1.98 [ -0.39,  +4.30]   Bonferroni [ -1.00,  +4.91]   entries>0: 7/11
+  UNION  linear_diag  10ps  Chai - Cart =  +9.31 [ +4.08, +15.08]   Bonferroni [ +2.87, +16.71]   entries>0: 10/12
+  UNION  shrink       10ps  Chai - Cart =  +2.08 [ -0.11,  +4.23]   Bonferroni [ -0.73,  +4.79]   entries>0: 8/12
+
+SECONDARY (all lags and predictors; m = 16 interval for linear_diag and shrink only):
+  SET13   10ps linear_diag          +9.14 [  +3.40,  +15.41]  m=16 [ +1.24, +18.85]
+  SET13   10ps shrink               +1.98 [  -0.39,   +4.30]  m=16 [ -1.45,  +5.49]
+  SET13   10ps linear_diag_ridge    +9.66 [  +3.58,  +16.40]
+  SET13   10ps linear_full          +6.27 [  +0.22,  +13.08]
+  SET13   10ps mlp                 +37.40 [  -7.17,  +91.06]
+  SET13   10ps mean               +351.17 [ +74.62, +697.65]
+  SET13  100ps linear_diag          +6.83 [  +2.02,  +11.80]  m=16 [ -0.08, +14.36]
+  SET13  100ps shrink               +1.19 [  -2.19,   +4.49]  m=16 [ -3.91,  +6.14]
+  SET13  100ps linear_diag_ridge    +7.07 [  +2.10,  +12.22]
+  SET13  100ps linear_full         +14.36 [  +2.95,  +27.93]
+  SET13  100ps mlp                 +43.65 [  -0.90,  +96.26]
+  SET13  100ps mean               +114.49 [ +18.35, +235.07]
+  SET13    1ns linear_diag          +4.48 [  -0.25,   +9.58]  m=16 [ -2.17, +12.37]
+  SET13    1ns shrink               +0.48 [  -3.68,   +4.75]  m=16 [ -5.66,  +6.95]
+  SET13    1ns linear_diag_ridge    +4.33 [  -0.32,   +9.40]
+  SET13    1ns linear_full         +25.49 [  +2.41,  +53.10]
+  SET13    1ns mlp                 +24.03 [  -5.86,  +58.71]
+  SET13    1ns mean                +30.59 [  -2.18,  +73.46]
+  SET13   10ns linear_diag          +4.65 [  -2.32,  +12.85]  m=16 [ -4.76, +17.76]
+  SET13   10ns shrink               -0.04 [  -5.00,   +5.47]  m=16 [ -6.89,  +8.53]
+  SET13   10ns linear_diag_ridge    +4.56 [  -2.57,  +12.89]
+  SET13   10ns linear_full         +20.54 [  +2.74,  +40.01]
+  SET13   10ns mlp                  +5.26 [  -9.52,  +22.08]
+  SET13   10ns mean                 +3.18 [  -9.93,  +19.66]
+  UNION   10ps linear_diag          +9.31 [  +4.08,  +15.08]  m=16 [ +1.90, +17.96]
+  UNION   10ps shrink               +2.08 [  -0.11,   +4.23]  m=16 [ -1.30,  +5.19]
+  UNION   10ps linear_diag_ridge    +9.79 [  +4.26,  +15.96]
+  UNION   10ps linear_full         +10.47 [  +1.89,  +21.32]
+  UNION   10ps mlp                 +91.13 [  +4.32, +216.36]
+  UNION   10ps mean               +814.39 [+140.81, +1862.66]
+  UNION  100ps linear_diag          +6.51 [  +2.11,  +11.17]  m=16 [ +0.29, +13.51]
+  UNION  100ps shrink               +1.40 [  -1.74,   +4.43]  m=16 [ -3.47,  +5.85]
+  UNION  100ps linear_diag_ridge    +6.74 [  +2.20,  +11.58]
+  UNION  100ps linear_full         +23.83 [  +5.91,  +47.46]
+  UNION  100ps mlp                 +71.62 [ +10.68, +146.64]
+  UNION  100ps mean               +213.65 [ +40.73, +451.73]
+  UNION    1ns linear_diag          +4.75 [  +0.39,   +9.36]  m=16 [ -1.60, +11.75]
+  UNION    1ns shrink               +0.70 [  -3.12,   +4.62]  m=16 [ -5.10,  +6.55]
+  UNION    1ns linear_diag_ridge    +4.62 [  +0.32,   +9.18]
+  UNION    1ns linear_full         +37.00 [  +8.41,  +71.41]
+  UNION    1ns mlp                 +31.70 [  +0.66,  +66.58]
+  UNION    1ns mean                +48.32 [  +5.13, +101.87]
+  UNION   10ns linear_diag          +5.83 [  -1.02,  +13.58]  m=16 [ -3.82, +18.05]
+  UNION   10ns shrink               -0.02 [  -4.55,   +5.00]  m=16 [ -6.65,  +7.67]
+  UNION   10ns linear_diag_ridge    +5.79 [  -1.23,  +13.70]
+  UNION   10ns linear_full         +22.68 [  +5.79,  +40.45]
+  UNION   10ns mlp                  +6.30 [  -7.44,  +21.75]
+  UNION   10ns mean                 +4.32 [  -8.03,  +19.43]
+
+ABSOLUTE LEVELS (mean over entries, % over identity), SET13:
+   10ps  shrink/chai   8.79  shrink/cart   6.81  linear_diag/chai   4.60  linear_diag/cart  -4.53   id/mean (chai) 0.443
+  100ps  shrink/chai  11.61  shrink/cart  10.41  linear_diag/chai   5.36  linear_diag/cart  -1.47   id/mean (chai) 0.582
+    1ns  shrink/chai  15.45  shrink/cart  14.97  linear_diag/chai   6.12  linear_diag/cart   1.65   id/mean (chai) 0.768
+   10ns  shrink/chai  21.99  shrink/cart  22.03  linear_diag/chai  11.15  linear_diag/cart   6.50   id/mean (chai) 1.078

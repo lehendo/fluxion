@@ -1,0 +1,317 @@
+{
+ "sigma_n2": 0.0005933075703473553,
+ "per_protein": {
+  "16pk_A": {
+   "var_per_element": 0.007254712749272585,
+   "nu": 0.08178236559495,
+   "improvement_observed_pct": 19.437073938877504,
+   "improvement_noise_free_pct": 16.714943259693065,
+   "noise_attributable_points": 2.7221306791844366
+  },
+  "1a62_A": {
+   "var_per_element": 0.008790225721895695,
+   "nu": 0.06749628384052497,
+   "improvement_observed_pct": 16.02265257839013,
+   "improvement_noise_free_pct": 13.56331150985019,
+   "noise_attributable_points": 2.4593410685399384
+  },
+  "1ab1_A": {
+   "var_per_element": 0.009945855475962162,
+   "nu": 0.059653749421686504,
+   "improvement_observed_pct": 16.907908190743203,
+   "improvement_noise_free_pct": 14.808609819090425,
+   "noise_attributable_points": 2.09929837165278
+  },
+  "1af7_A": {
+   "var_per_element": 0.009966655634343624,
+   "nu": 0.059529253554512815,
+   "improvement_observed_pct": 15.797893245486016,
+   "improvement_noise_free_pct": 13.632992430885304,
+   "noise_attributable_points": 2.164900814600712
+  },
+  "1ah7_A": {
+   "var_per_element": 0.013390237465500832,
+   "nu": 0.044308965533731405,
+   "improvement_observed_pct": 15.669759429936892,
+   "improvement_noise_free_pct": 14.078097071156732,
+   "noise_attributable_points": 1.5916623587801604
+  },
+  "1ail_A": {
+   "var_per_element": 0.011557039804756641,
+   "nu": 0.05133733035194376,
+   "improvement_observed_pct": 18.141143307740847,
+   "improvement_noise_free_pct": 16.417086166067385,
+   "noise_attributable_points": 1.724057141673463
+  },
+  "1aol_A": {
+   "var_per_element": 0.019505582749843597,
+   "nu": 0.030417320925831486,
+   "improvement_observed_pct": 11.545485138495138,
+   "improvement_noise_free_pct": 10.339107028784621,
+   "noise_attributable_points": 1.2063781097105166
+  },
+  "1b0n_A": {
+   "var_per_element": 0.009678628295660019,
+   "nu": 0.06130079100293578,
+   "improvement_observed_pct": 6.811067962348694,
+   "improvement_noise_free_pct": 3.99065896327353,
+   "noise_attributable_points": 2.8204089990751635
+  },
+  "1b25_D": {
+   "var_per_element": 0.012574457563459873,
+   "nu": 0.047183551843337425,
+   "improvement_observed_pct": 17.74798172690413,
+   "improvement_noise_free_pct": 16.150859029048814,
+   "noise_attributable_points": 1.597122697855316
+  },
+  "1b2s_E": {
+   "var_per_element": 0.005127756856381893,
+   "nu": 0.11570509034743678,
+   "improvement_observed_pct": 18.977353242429206,
+   "improvement_noise_free_pct": 14.918211765168365,
+   "noise_attributable_points": 4.059141477260841
+  },
+  "1b2s_F": {
+   "var_per_element": 0.005408866330981255,
+   "nu": 0.10969166809484085,
+   "improvement_observed_pct": 19.36962920592784,
+   "improvement_noise_free_pct": 15.595772052894718,
+   "noise_attributable_points": 3.773857153033122
+  },
+  "1b8d_K": {
+   "var_per_element": 0.03634115308523178,
+   "nu": 0.016326052422053226,
+   "improvement_observed_pct": 6.175801506748046,
+   "improvement_noise_free_pct": 5.448450575357638,
+   "noise_attributable_points": 0.7273509313904074
+  },
+  "1bgf_A": {
+   "var_per_element": 0.017062701284885406,
+   "nu": 0.03477219465085068,
+   "improvement_observed_pct": 9.75749633571793,
+   "improvement_noise_free_pct": 8.307765854584709,
+   "noise_attributable_points": 1.4497304811332212
+  },
+  "1bkp_A": {
+   "var_per_element": 0.012100736610591412,
+   "nu": 0.0490306986624311,
+   "improvement_observed_pct": 17.592109578653425,
+   "improvement_noise_free_pct": 15.92120231876693,
+   "noise_attributable_points": 1.670907259886495
+  },
+  "1bq8_A": {
+   "var_per_element": 0.007139279507100582,
+   "nu": 0.083104684409297,
+   "improvement_observed_pct": 14.606643904658034,
+   "improvement_noise_free_pct": 11.398694601749536,
+   "noise_attributable_points": 3.207949302908497
+  },
+  "1btk_A": {
+   "var_per_element": 0.009429042227566242,
+   "nu": 0.06292341852206294,
+   "improvement_observed_pct": 16.308040951642266,
+   "improvement_noise_free_pct": 14.045671704633255,
+   "noise_attributable_points": 2.2623692470090107
+  },
+  "1bx7_A": {
+   "var_per_element": 0.022561846300959587,
+   "nu": 0.026296942299536944,
+   "improvement_observed_pct": 9.77433773818034,
+   "improvement_noise_free_pct": 8.687957335968289,
+   "noise_attributable_points": 1.0863804022120505
+  },
+  "1bxy_A": {
+   "var_per_element": 0.005232681520283222,
+   "nu": 0.11338499544593766,
+   "improvement_observed_pct": 19.704127389122927,
+   "improvement_noise_free_pct": 15.829731670157237,
+   "noise_attributable_points": 3.8743957189656895
+  },
+  "1bxy_B": {
+   "var_per_element": 0.0053368424996733665,
+   "nu": 0.11117202173076456,
+   "improvement_observed_pct": 18.891843470899737,
+   "improvement_noise_free_pct": 15.000925612540438,
+   "noise_attributable_points": 3.890917858359297
+  }
+ },
+ "summary": {
+  "nu": {
+   "mean": 0.06449565150814031,
+   "lo": 0.04742912530434221,
+   "hi": 0.08000955306640758
+  },
+  "improvement_observed_pct": {
+   "mean": 15.223070991731701,
+   "lo": 13.01106848487566,
+   "hi": 17.02066295533257
+  },
+  "improvement_noise_free_pct": {
+   "mean": 12.886844672087957,
+   "lo": 10.964929161967301,
+   "hi": 14.430334872303028
+  },
+  "noise_attributable_points": {
+   "mean": 2.3362263196437425,
+   "lo": 1.764948468336485,
+   "hi": 2.8536941249015455
+  }
+ },
+ "per_protein_V1": {
+  "16pk_A": {
+   "var_per_element": 0.008530362509191036,
+   "nu": 0.06955244512857411,
+   "improvement_observed_pct": 16.14562941894475,
+   "improvement_noise_free_pct": 13.614960989678327,
+   "noise_attributable_points": 2.530668429266425
+  },
+  "1a62_A": {
+   "var_per_element": 0.009956629946827888,
+   "nu": 0.05958919569330574,
+   "improvement_observed_pct": 14.073109162732445,
+   "improvement_noise_free_pct": 11.796599238612327,
+   "noise_attributable_points": 2.276509924120118
+  },
+  "1ab1_A": {
+   "var_per_element": 0.010657438077032566,
+   "nu": 0.05567074995499806,
+   "improvement_observed_pct": 14.876434031805108,
+   "improvement_noise_free_pct": 12.805805319997148,
+   "noise_attributable_points": 2.0706287118079594
+  },
+  "1af7_A": {
+   "var_per_element": 0.011882103979587555,
+   "nu": 0.04993287143140704,
+   "improvement_observed_pct": 13.24496559553453,
+   "improvement_noise_free_pct": 11.31322377204862,
+   "noise_attributable_points": 1.9317418234859107
+  },
+  "1ah7_A": {
+   "var_per_element": 0.01899685710668564,
+   "nu": 0.031231880463982134,
+   "improvement_observed_pct": 10.954666508488986,
+   "improvement_noise_free_pct": 9.695893471173061,
+   "noise_attributable_points": 1.2587730373159245
+  },
+  "1ail_A": {
+   "var_per_element": 0.012970837764441967,
+   "nu": 0.045741653786915644,
+   "improvement_observed_pct": 15.648773194889486,
+   "improvement_noise_free_pct": 14.00217305781894,
+   "noise_attributable_points": 1.6466001370705474
+  },
+  "1aol_A": {
+   "var_per_element": 0.026285776868462563,
+   "nu": 0.022571429914981907,
+   "improvement_observed_pct": 7.741278837517285,
+   "improvement_noise_free_pct": 6.765412372991109,
+   "noise_attributable_points": 0.9758664645261761
+  },
+  "1b0n_A": {
+   "var_per_element": 0.012564294971525669,
+   "nu": 0.047221716116340955,
+   "improvement_observed_pct": 4.365073134412267,
+   "improvement_noise_free_pct": 2.103309198470271,
+   "noise_attributable_points": 2.261763935941996
+  },
+  "1b25_D": {
+   "var_per_element": 0.016359379515051842,
+   "nu": 0.036267119410089386,
+   "improvement_observed_pct": 13.96026831052578,
+   "improvement_noise_free_pct": 12.60402398285515,
+   "noise_attributable_points": 1.3562443276706304
+  },
+  "1b2s_E": {
+   "var_per_element": 0.005367303267121315,
+   "nu": 0.11054109313736772,
+   "improvement_observed_pct": 16.585498108008277,
+   "improvement_noise_free_pct": 12.432776113453158,
+   "noise_attributable_points": 4.15272199455512
+  },
+  "1b2s_F": {
+   "var_per_element": 0.006607439834624529,
+   "nu": 0.08979386648945104,
+   "improvement_observed_pct": 15.892710708148527,
+   "improvement_noise_free_pct": 12.527950498087714,
+   "noise_attributable_points": 3.364760210060813
+  },
+  "1b8d_K": {
+   "var_per_element": 0.04877115786075592,
+   "nu": 0.012165131942146584,
+   "improvement_observed_pct": 2.7394802918573213,
+   "improvement_noise_free_pct": 2.157469597059386,
+   "noise_attributable_points": 0.5820106947979353
+  },
+  "1bgf_A": {
+   "var_per_element": 0.018969889730215073,
+   "nu": 0.03127627934506864,
+   "improvement_observed_pct": 9.255915467074615,
+   "improvement_noise_free_pct": 7.940449207355771,
+   "noise_attributable_points": 1.315466259718845
+  },
+  "1bkp_A": {
+   "var_per_element": 0.014714177697896957,
+   "nu": 0.04032216971473401,
+   "improvement_observed_pct": 14.438752277112844,
+   "improvement_noise_free_pct": 12.944598071712765,
+   "noise_attributable_points": 1.4941542054000778
+  },
+  "1bq8_A": {
+   "var_per_element": 0.00862943846732378,
+   "nu": 0.06875390242296447,
+   "improvement_observed_pct": 12.10052279014554,
+   "improvement_noise_free_pct": 9.30240426406802,
+   "noise_attributable_points": 2.79811852607752
+  },
+  "1btk_A": {
+   "var_per_element": 0.010727493092417717,
+   "nu": 0.05530719668015542,
+   "improvement_observed_pct": 14.022275762461788,
+   "improvement_noise_free_pct": 11.91595393644887,
+   "noise_attributable_points": 2.106321826012919
+  },
+  "1bx7_A": {
+   "var_per_element": 0.02547820843756199,
+   "nu": 0.0232868638233077,
+   "improvement_observed_pct": 9.211694801753655,
+   "improvement_noise_free_pct": 8.239217138093725,
+   "noise_attributable_points": 0.9724776636599319
+  },
+  "1bxy_A": {
+   "var_per_element": 0.0059353262186050415,
+   "nu": 0.09996208270533752,
+   "improvement_observed_pct": 16.597232308935993,
+   "improvement_noise_free_pct": 12.887377243543053,
+   "noise_attributable_points": 3.709855065392942
+  },
+  "1bxy_B": {
+   "var_per_element": 0.005697171203792095,
+   "nu": 0.10414073039483943,
+   "improvement_observed_pct": 16.405228764773994,
+   "improvement_noise_free_pct": 12.499945722465423,
+   "noise_attributable_points": 3.9052830423085716
+  }
+ },
+ "summary_V1": {
+  "nu": {
+   "mean": 0.055438335713471974,
+   "lo": 0.03953667466799327,
+   "hi": 0.07001669427857841
+  },
+  "improvement_observed_pct": {
+   "mean": 12.53997418290122,
+   "lo": 10.373606880934405,
+   "hi": 14.277451579830311
+  },
+  "improvement_noise_free_pct": {
+   "mean": 10.397344378733308,
+   "lo": 8.60402867852045,
+   "hi": 11.801970583976551
+  },
+  "noise_attributable_points": {
+   "mean": 2.142629804167914,
+   "lo": 1.5621818788942183,
+   "hi": 2.6702752558934186
+  }
+ }
+}

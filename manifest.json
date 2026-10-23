@@ -1,0 +1,894 @@
+{
+ "training_runs": [
+  {
+   "run": "original run",
+   "paper": "Section 7.1",
+   "script": "src/fluxion/training/train.py",
+   "seed": "not recorded (default RNG state)",
+   "config": {
+    "gpus": "4 x A100, DDP",
+    "proteins": "all 19",
+    "per_rank_batch": 4,
+    "lr": 0.0001,
+    "formulation": "temporal pairs, padding counted, uncentered latents, no held-out split",
+    "stopped": "wall-time checkpoint at step 192,325 (epoch 4 of a 200-epoch schedule)",
+    "parameters": "about 40M"
+   }
+  },
+  {
+   "run": "uniform (seed 0)",
+   "paper": "Sections 6.1, 6.3",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 6400,
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "uniform"
+   }
+  },
+  {
+   "run": "beta (seed 0)",
+   "paper": "Sections 6.1, 6.3, 6.4",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 6400,
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "Beta(0.25, 0.25)"
+   }
+  },
+  {
+   "run": "uniform (seed 1)",
+   "paper": "Section 6.1, Appendix A.7",
+   "seed": 1,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 6400,
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "uniform"
+   }
+  },
+  {
+   "run": "uniform (seed 2)",
+   "paper": "Section 6.1, Appendix A.7",
+   "seed": 2,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 6400,
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "uniform"
+   }
+  },
+  {
+   "run": "3c",
+   "paper": "Sections 6.1 to 6.3, 7.1",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 102400,
+    "accum": 2,
+    "effective_batch": 16,
+    "lr": 0.0001414,
+    "warmup_steps": 5600,
+    "ema_decay": 0.99994,
+    "t_dist": "uniform",
+    "divergence_guard": "halt if the loss exceeds 2x the v=0 loss over a 12,800-sample window"
+   }
+  },
+  {
+   "run": "T3a",
+   "paper": "Section 7.1",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 102400,
+    "accum": 2,
+    "effective_batch": 16,
+    "lr": 0.0001414,
+    "warmup_steps": 5600,
+    "ema_decay": 0.99994,
+    "t_dist": "uniform",
+    "padding": "counted in loss and attention",
+    "centering": "uncentered"
+   }
+  },
+  {
+   "run": "T3b (seed 0)",
+   "paper": "Section 7.1",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 102400,
+    "accum": 2,
+    "effective_batch": 16,
+    "lr": 0.0001414,
+    "warmup_steps": 5600,
+    "ema_decay": 0.99994,
+    "t_dist": "uniform",
+    "padding": "counted in loss and attention",
+    "centering": "centered"
+   }
+  },
+  {
+   "run": "T3b (seed 1)",
+   "paper": "Section 7.1",
+   "seed": 1,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 102400,
+    "accum": 2,
+    "effective_batch": 16,
+    "lr": 0.0001414,
+    "warmup_steps": 5600,
+    "ema_decay": 0.99994,
+    "t_dist": "uniform",
+    "padding": "counted in loss and attention",
+    "centering": "centered"
+   }
+  },
+  {
+   "run": "T3c",
+   "paper": "Section 7.1",
+   "seed": 0,
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": 102400,
+    "accum": 2,
+    "effective_batch": 16,
+    "lr": 0.0001414,
+    "warmup_steps": 5600,
+    "ema_decay": 0.99994,
+    "t_dist": "uniform",
+    "padding": "masked",
+    "centering": "uncentered"
+   }
+  },
+  {
+   "run": "stability diagnostic A (seeds 0 and 1)",
+   "paper": "Section 6.4, Appendix A.7",
+   "seed": "0 and 1",
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": "6400 scheduled, stopped after 600",
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "uniform"
+   }
+  },
+  {
+   "run": "stability diagnostic B (seeds 0 and 1)",
+   "paper": "Section 6.4, Appendix A.7",
+   "seed": "0 and 1",
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": "6400 scheduled, stopped after 600",
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "Beta(0.25, 0.25), clamped"
+   }
+  },
+  {
+   "run": "stability diagnostic C (seeds 0 and 1)",
+   "paper": "Section 6.4, Appendix A.7",
+   "seed": "0 and 1",
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": "6400 scheduled, stopped after 600",
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0005657,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "Beta(0.25, 0.25), truncated"
+   }
+  },
+  {
+   "run": "stability diagnostic D (seeds 0 and 1)",
+   "paper": "Section 6.4, Appendix A.7",
+   "seed": "0 and 1",
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": "6400 scheduled, stopped after 600",
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0002828,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "Beta(0.25, 0.25), clamped"
+   }
+  },
+  {
+   "run": "stability diagnostic E (seeds 0 and 1)",
+   "paper": "Section 6.4, Appendix A.7",
+   "seed": "0 and 1",
+   "config": {
+    "architecture": "FluxionDiT, d_model 256, 6 layers, 8 heads, d_ff 1024 (9.15M parameters)",
+    "latents": "13 training proteins (12 PDB entries); 5 held-out proteins (4 entries: 16pk, 1aol, 1bq8, 1bxy)",
+    "optimizer": "AdamW, weight decay 1e-5, gate learning rate = 10x the base rate, cosine decay to 0.1x, EMA of the weights",
+    "t_clip": "t clamped to [0.01, 0.99]",
+    "micro_batch": 8,
+    "script": "src/fluxion/training/train_t3.py",
+    "milestone_checkpoints": "25, 50, 75 and 100% of the steps",
+    "steps": "6400 scheduled, stopped after 600",
+    "accum": 32,
+    "effective_batch": 256,
+    "lr": 0.0002828,
+    "warmup_steps": 350,
+    "ema_decay": 0.999,
+    "t_dist": "uniform"
+   }
+  }
+ ],
+ "scripts": [
+  {
+   "script": "scripts/analyze_reextract_padding.py",
+   "artifact": "Compares padded values across the GPU re-extraction conditions (paper Section 3.1, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/reextract_padding.json"
+   ]
+  },
+  {
+   "script": "scripts/build_extraction_metadata.py",
+   "artifact": "Builds extraction_metadata.json (residue counts, buckets, replicas), the input table every analysis reads, from extraction job logs or directly from the latent shards.",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/characterize_padding_shards.py",
+   "artifact": "Padding constants per shard and protein (paper Section 3.1, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/padding_shards.json"
+   ]
+  },
+  {
+   "script": "scripts/check_flow_involution.py",
+   "artifact": "Numerical check of the identity-flow proposition on Gaussian mixtures and generic odd fields (paper Section 5.2, Appendix A.6).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": []
+  },
+  {
+   "script": "scripts/check_padding_hypothesis.py",
+   "artifact": "Centered padded-token norms against real tokens (paper Section 3.1, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "t3a/config.json"
+   ]
+  },
+  {
+   "script": "scripts/check_shard_boundaries.py",
+   "artifact": "Continuity of latents across shard boundaries, the input to the padding signal-to-noise estimate (paper Appendix A.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/e3_table.py",
+   "artifact": "Gradient signal-to-noise table and figure (paper Section 6.2).",
+   "seeds": [],
+   "files_named": [
+    "e3_table.md",
+    "gradsnr.json"
+   ]
+  },
+  {
+   "script": "scripts/extraction_noise_structure.py",
+   "artifact": "Structure of the run-to-run difference of re-extracted latents: offset share and cosines (paper Section 3.2, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/extraction_noise_structure.json"
+   ]
+  },
+  {
+   "script": "scripts/fetch_atlas_sequences.py",
+   "artifact": "Re-fetches the ATLAS analysis archives (sequences) for the 19 proteins, the input to the alignment checks (paper Appendix A.4).",
+   "seeds": [],
+   "files_named": [
+    "atlas_refetch_meta.json",
+    "atlas_refetch_sequences.json"
+   ]
+  },
+  {
+   "script": "scripts/fetch_atlas_trajectories.py",
+   "artifact": "Fetches the ATLAS 10 ps trajectories used for the coordinate comparison (paper Section 4.2, Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/make_figures.py",
+   "artifact": "Regenerates every paper figure and report from the saved results in paper_results/ (no GPU or cluster data needed).",
+   "seeds": [],
+   "files_named": [
+    "paper_results/phase1/b1/b1_report.json",
+    "paper_results/phase1/b1_10ps_controls_report.txt",
+    "paper_results/phase1/b1_10ps_controls_topm.txt",
+    "paper_results/phase1/b1_10ps_report.txt",
+    "paper_results/phase1/b1_10ps_stability_null.txt",
+    "paper_results/phase1/b1_10ps_stability_report.txt",
+    "paper_results/phase1/gradsnr.json",
+    "paper_results/phase1/headline.json",
+    "paper_results/phase1/noise_attribution_perprotein.json",
+    "paper_results/phase1/sweep/across_proteins.json",
+    "paper_results/phase3/eval_100.json",
+    "paper_results/phase3/eval_s1_100.json",
+    "paper_results/phase3/eval_s2_100.json",
+    "paper_results/phase3/matched_linear_curve.json",
+    "paper_results/phase3/predictions.json",
+    "paper_results/phase3/seed_report.txt"
+   ]
+  },
+  {
+   "script": "scripts/make_tables.py",
+   "artifact": "Regenerates the paper's tables from the saved results into paper_results/tables.md: the headline decomposition (Section 4.1), the baseline ratios (3.3), the padding/centering arms (7.1), and the per-protein noise, robustness and curve tables (Appendices A.1, A.3, A.7).",
+   "seeds": [],
+   "files_named": [
+    "eval_100.json",
+    "eval_3c_100.json",
+    "eval_t3a_100.json",
+    "eval_t3b_100.json",
+    "eval_t3b_s1_100.json",
+    "eval_t3c_100.json",
+    "headline.json",
+    "inductive_mean.json",
+    "matched_linear_curve.json",
+    "noise_attribution_perprotein.json",
+    "noise_per_protein.json",
+    "sweep/asymptote.json",
+    "tables.md"
+   ]
+  },
+  {
+   "script": "scripts/noise_attribution.py",
+   "artifact": "Pilot-based estimate of the noise share of the 10 ps shrinkage gain, superseded by noise_attribution_perprotein.py (paper Section 3.2).",
+   "seeds": [],
+   "files_named": [
+    "inductive_mean.json",
+    "noise_attribution.json",
+    "real_token_reproducibility.json"
+   ]
+  },
+  {
+   "script": "scripts/noise_attribution_perprotein.py",
+   "artifact": "Per-protein recomposition of the 10 ps mean-reversion headline with its nested bootstrap (paper Section 4.1, Appendix A.3).",
+   "seeds": [],
+   "files_named": [
+    "inductive_mean.json",
+    "noise_attribution.json",
+    "noise_attribution_perprotein.json",
+    "noise_per_protein.json"
+   ]
+  },
+  {
+   "script": "scripts/noise_subset_traj.py",
+   "artifact": "Writes the 200-frame trajectory subset used for the per-protein extraction-noise measurement (paper Section 3.2).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/padding_snr.py",
+   "artifact": "Analytic effect of counting padding on gradient signal-to-noise (paper Section 3.1, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "padding_snr.json",
+    "shard_boundaries_b.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1_gradsnr.py",
+   "artifact": "Gradient signal-to-noise of the original run's checkpoint (paper Section 6.2).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "phase1_results/gradsnr.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1_headline.py",
+   "artifact": "Measured f(t), attainable reduction and attenuation on the 19 proteins (paper Section 5.4).",
+   "seeds": [],
+   "files_named": [
+    "phase1_results/headline.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1_inductive_mean.py",
+   "artifact": "Probes re-fit with the mean of other replicas and of the training proteins (paper Sections 3.3 and 4.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "phase1_results/inductive_mean.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1_noise_per_protein.py",
+   "artifact": "Per-protein extraction-noise variance from two re-extractions (paper Section 3.2, Appendix A.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json",
+    "noise_per_protein.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1_padding_all19.py",
+   "artifact": "Padded-versus-masked MLP evaluation on all 19 proteins (paper Section 3.1).",
+   "seeds": [],
+   "files_named": [
+    "phase1_results/acf.json",
+    "phase1_results/padding_all19.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_acf.py",
+   "artifact": "Autocorrelation and structure function of the latents per protein (paper Section 3.3).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_extract.py",
+   "artifact": "Builds the row cache of real-token pairs behind the lag sweep and probes (paper Sections 3.3 and 4.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_fit.py",
+   "artifact": "Lag sweep of identity, mean, shrinkage, linear and MLP probes (paper Sections 3.3 and 4.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "across_proteins.json",
+    "asymptote.json",
+    "onec.json",
+    "per_protein.json",
+    "phase1_results/acf.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_ladder.py",
+   "artifact": "The padding and masking ladder from the first evaluation to the 19-protein figures (paper Section 3.1, Appendix A.2).",
+   "seeds": [],
+   "files_named": [
+    "phase1_results/acf.json",
+    "phase1_results/ladder.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_vtheta.py",
+   "artifact": "Velocity output of the original run's checkpoint on its training latents (paper Section 7.1).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1a_vtheta_report.py",
+   "artifact": "Summary of the original run's velocity norm (paper Section 7.1).",
+   "seeds": [],
+   "files_named": [
+    "phase1_results/vtheta_summary.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_cartesian.py",
+   "artifact": "Chai-1 versus C-alpha PCA probes at 100 ps and longer (paper Section 4.2, Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_cartesian_10ps.py",
+   "artifact": "Chai-1 versus C-alpha PCA probes at 10 ps stride (paper Section 4.2, Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/atlas_10ps_verification.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_controls_10ps.py",
+   "artifact": "Whitening, no-intercept and component-band controls for the 10 ps comparison (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_controls_report.py",
+   "artifact": "Registered readings of the 10 ps controls (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase1b_controls_topm.py",
+   "artifact": "Post hoc restriction of the 10 ps lead to the top components (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase1b_report.py",
+   "artifact": "Report of the 100 ps and longer coordinate comparison (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "b1_report.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_report_10ps.py",
+   "artifact": "Report of the 10 ps coordinate comparison (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase1b_stability_10ps.py",
+   "artifact": "PCA-axis stability diagnostics across replicas (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_stability_null.py",
+   "artifact": "Chance-corrected stability statistics against random-subspace nulls (paper Appendix A.5).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase1b_stability_report.py",
+   "artifact": "Registered reading of the stability diagnostics (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase1b_templatefeat_10ps.py",
+   "artifact": "Template-feature PCA control for the 10 ps comparison (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/atlas_10ps_verification.json"
+   ]
+  },
+  {
+   "script": "scripts/phase1b_tf_report.py",
+   "artifact": "Report of the template-feature control (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": []
+  },
+  {
+   "script": "scripts/phase3_3c_readings.py",
+   "artifact": "Registered readings for the batch-16 arm 3c against the batch-256 uniform arm (paper Section 6.2).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "eval_100.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_center_stats.py",
+   "artifact": "Per-protein per-position means that center the latents for the probes and flow models (paper Section 2).",
+   "seeds": [],
+   "files_named": [
+    "split.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_eval.py",
+   "artifact": "Held-out and in-sample evaluation of the flow-model arms: attained reduction, one-step improvement, Euler steps (paper Sections 6 and 7.1).",
+   "seeds": [
+    "0",
+    "7"
+   ],
+   "files_named": [
+    ".partial.json",
+    "config.json",
+    "extraction_metadata.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_matched_linear_curve.py",
+   "artifact": "Matched linear reference curve fit on the training entries (paper Section 6.1).",
+   "seeds": [
+    "7"
+   ],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase3/matched_linear_curve.json",
+    "phase3/uniform/config.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_matched_report.py",
+   "artifact": "Reading of the arms against the matched reference (paper Section 6.1, Appendix A.7).",
+   "seeds": [],
+   "files_named": [
+    "matched_linear_curve.json",
+    "paper_results/phase1/headline.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_predict.py",
+   "artifact": "Predicted attainable reduction per arm from the closed form and the measured f(t) (paper Section 6).",
+   "seeds": [],
+   "files_named": [
+    "paper_results/phase1/headline.json",
+    "paper_results/phase3/predictions.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_report.py",
+   "artifact": "Tables from the flow-model evaluations (paper Section 6, Appendix A.7).",
+   "seeds": [],
+   "files_named": [
+    "phase3_report.json",
+    "predictions.json"
+   ]
+  },
+  {
+   "script": "scripts/phase3_seed_report.py",
+   "artifact": "Registered reading of the seed replication (paper Section 6.1).",
+   "seeds": [],
+   "files_named": [
+    "phase1/headline.json",
+    "phase3/eval_100.json",
+    "phase3/eval_s1_100.json",
+    "phase3/eval_s2_100.json"
+   ]
+  },
+  {
+   "script": "scripts/plot_phase1.py",
+   "artifact": "Figures for the probe studies (paper Sections 3 and 4).",
+   "seeds": [],
+   "files_named": [
+    "across_proteins.json",
+    "asymptote.json",
+    "b1_report.json",
+    "headline.json",
+    "onec.json"
+   ]
+  },
+  {
+   "script": "scripts/plot_phase3.py",
+   "artifact": "Figures for the flow-model experiments (paper Section 6, Appendix A.7).",
+   "seeds": [],
+   "files_named": [
+    "A_s0_loss_log.csv",
+    "headline.json",
+    "predictions.json"
+   ]
+  },
+  {
+   "script": "scripts/real_token_reproducibility.py",
+   "artifact": "Real-token differences between re-extractions of identical frames (paper Section 3.2, Appendix A.1).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/real_token_reproducibility.json"
+   ]
+  },
+  {
+   "script": "scripts/verify_atlas_10ps.py",
+   "artifact": "Checks that the 10 ps trajectories contain the 100 ps archives frame for frame (paper Appendix A.5).",
+   "seeds": [
+    "0"
+   ],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/atlas_10ps_verification.json"
+   ]
+  },
+  {
+   "script": "scripts/verify_atlas_local_alignment.py",
+   "artifact": "Frame-exact local alignment test of coordinates against latents (paper Appendix A.4).",
+   "seeds": [],
+   "files_named": [
+    "extraction_metadata.json",
+    "phase1_results/atlas_10ps_local_alignment.json"
+   ]
+  },
+  {
+   "script": "scripts/verify_atlas_refetch.py",
+   "artifact": "Global alignment check of the re-fetched archives against the latents (paper Appendix A.4).",
+   "seeds": [],
+   "files_named": [
+    "atlas_refetch_meta.json",
+    "extraction_metadata.json",
+    "phase1_results/atlas_verification_revised.json"
+   ]
+  },
+  {
+   "script": "scripts/verify_latent_frame_sensitivity.py",
+   "artifact": "Empirical check that latents respond to per-frame coordinates, the check behind the frame-variance gate (paper Section 2).",
+   "seeds": [],
+   "files_named": [
+    "manifest.json"
+   ]
+  },
+  {
+   "script": "scripts/verify_template_features.py",
+   "artifact": "Numeric check of the template-feature reimplementation against the trunk's inputs (paper Appendix A.5).",
+   "seeds": [],
+   "files_named": [
+    "phase1_results/template_feature_verification.json"
+   ]
+  }
+ ],
+ "result_producers": {
+  "tables.md": "scripts/make_tables.py",
+  "phase1/extraction_metadata.json": "scripts/build_extraction_metadata.py",
+  "phase1/b1/*": "scripts/phase1b_cartesian.py",
+  "phase1/b1_ridge/*": "scripts/phase1b_cartesian.py (ridge probe cells)",
+  "phase1/b1_10ps/*": "scripts/phase1b_cartesian_10ps.py",
+  "phase1/b1_10ps_controls/*": "scripts/phase1b_controls_10ps.py",
+  "phase1/b1_10ps_stability/*": "scripts/phase1b_stability_10ps.py",
+  "phase1/b1_10ps_tf/*": "scripts/phase1b_templatefeat_10ps.py",
+  "phase1/b1_*report*.txt": "scripts/phase1b_report_10ps.py, scripts/phase1b_controls_report.py, scripts/phase1b_stability_report.py, scripts/phase1b_stability_null.py, scripts/phase1b_tf_report.py",
+  "phase1/b1_10ps_controls_topm.txt": "scripts/phase1b_controls_topm.py",
+  "phase1/b1_10ps_stability_null.txt": "scripts/phase1b_stability_null.py",
+  "phase1/atlas/*": "scripts/verify_atlas_refetch.py",
+  "phase1/atlas10ps/*": "scripts/verify_atlas_10ps.py, scripts/verify_atlas_local_alignment.py",
+  "phase1/acf.json": "scripts/phase1a_acf.py",
+  "phase1/sweep/*": "scripts/phase1a_fit.py",
+  "phase1/ladder.json": "scripts/phase1a_ladder.py",
+  "phase1/headline.json": "scripts/phase1_headline.py",
+  "phase1/gradsnr*": "scripts/phase1_gradsnr.py",
+  "phase1/e3_table.md": "scripts/e3_table.py",
+  "phase1/extraction_noise_structure.json": "scripts/extraction_noise_structure.py",
+  "phase1/inductive_mean.json": "scripts/phase1_inductive_mean.py",
+  "phase1/noise_attribution.json": "scripts/noise_attribution.py",
+  "phase1/noise_attribution_perprotein.*": "scripts/noise_attribution_perprotein.py",
+  "phase1/noise_per_protein.json": "scripts/phase1_noise_per_protein.py",
+  "phase1/padding_all19.json": "scripts/phase1_padding_all19.py",
+  "phase1/padding_hypothesis_check.json": "scripts/check_padding_hypothesis.py",
+  "phase1/padding_shards.json": "scripts/characterize_padding_shards.py",
+  "phase1/padding_snr.json": "scripts/padding_snr.py",
+  "phase1/real_token_reproducibility.json": "scripts/real_token_reproducibility.py",
+  "phase1/reextract_padding.json": "scripts/analyze_reextract_padding.py",
+  "phase1/shard_boundaries_b.json": "scripts/check_shard_boundaries.py",
+  "phase1/template_feature_verification.json": "scripts/verify_template_features.py",
+  "phase1/vtheta_summary.json": "scripts/phase1a_vtheta_report.py",
+  "phase3/3c_readings_100.json": "scripts/phase3_3c_readings.py",
+  "phase3/config_*.json": "training run configuration (see the runs table)",
+  "phase3/diag/*": "stability diagnostic runs A to E (see the runs table)",
+  "phase3/eval_*.json": "scripts/phase3_eval.py",
+  "phase3/steps_*.json": "scripts/phase3_eval.py (Euler-step sweep)",
+  "phase3/loss_log_*.csv": "training logs of the runs in the runs table",
+  "phase3/seeds/*": "training logs of the seed runs",
+  "phase3/matched_linear_curve.json": "scripts/phase3_matched_linear_curve.py",
+  "phase3/matched_report.txt": "scripts/phase3_matched_report.py",
+  "phase3/phase3_report.json": "scripts/phase3_report.py",
+  "phase3/predictions.json": "scripts/phase3_predict.py",
+  "phase3/seed_report.txt": "scripts/phase3_seed_report.py"
+ },
+ "unmatched_result_files": [],
+ "notes": "Latent extraction is not bitwise reproducible (paper Sections 3.1 and 3.2), and kernels are non-deterministic, so a seed fixes data order and initialization but not the bits of a trained checkpoint."
+}

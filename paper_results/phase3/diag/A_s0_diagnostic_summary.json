@@ -1,0 +1,14 @@
+{
+ "stop_after": 600,
+ "seed": 0,
+ "t_dist": "uniform",
+ "t_mode": "clamp",
+ "lr": 0.0005657,
+ "guard_ratio": 2.0,
+ "window_samples": 12800,
+ "max_windowed_ratio_after_warmup": 0.9754333752624755,
+ "first_step_over": null,
+ "n_steps_over": 0,
+ "diverged": false,
+ "nonfinite": false
+}

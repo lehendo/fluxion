@@ -1,0 +1,32 @@
+
+===== SET13: 13 proteins / 11 entries; paired Chai - Cart (positive = Chai-1 more stable), 95% CI =====
+  P1        mean matched-axis |cos|, idx 61-137            Chai +0.050  Cart +0.108  diff -0.052 [-0.076, -0.032]
+  P2        S_100 (principal angles, top-100)              Chai +0.535  Cart +0.809  diff -0.272 [-0.308, -0.240]
+  P3        mean log held-out/train variance, idx 61-137   Chai +0.254  Cart +0.636  diff -0.394 [-0.502, -0.298]
+  P4        capture ratio, m = 100                         Chai +0.809  Cart +0.955  diff -0.157 [-0.190, -0.122]
+  S_q0.9    S at m_90%                                     Chai +0.479  Cart +0.739  diff -0.250 [-0.281, -0.217]
+  S_q0.95   S at m_95%                                     Chai +0.464  Cart +0.770  diff -0.299 [-0.324, -0.273]
+  S_q0.99   S at m_99%                                     Chai +0.462  Cart +0.826  diff -0.359 [-0.384, -0.330]
+  cap_q0.9  capture at m_90%                               Chai +0.826  Cart +0.905  diff -0.081 [-0.108, -0.061]
+  cap_q0.95 capture at m_95%                               Chai +0.832  Cart +0.943  diff -0.116 [-0.147, -0.090]
+  cap_q0.99 capture at m_99%                               Chai +0.832  Cart +0.978  diff -0.154 [-0.186, -0.122]
+  mean m reaching 90/95/99% of variance (chai | cart): ['254|46', '294|84', '299|176']
+  READING (SET13): MECHANISM REJECTED
+  chai: matched-axis |cos| by band [0.34, 0.18, 0.09, 0.06, 0.04];  held-out/train variance by band [1.0, 1.4, 1.6, 1.5, 1.43]
+  cart: matched-axis |cos| by band [0.38, 0.21, 0.14, 0.11, 0.1];  held-out/train variance by band [1.29, 1.82, 2.08, 2.49, 2.5]
+
+===== UNION: 14 proteins / 12 entries; paired Chai - Cart (positive = Chai-1 more stable), 95% CI =====
+  P1        mean matched-axis |cos|, idx 61-137            Chai +0.050  Cart +0.106  diff -0.051 [-0.074, -0.032]
+  P2        S_100 (principal angles, top-100)              Chai +0.525  Cart +0.806  diff -0.279 [-0.315, -0.247]
+  P3        mean log held-out/train variance, idx 61-137   Chai +0.278  Cart +0.722  diff -0.466 [-0.649, -0.324]
+  P4        capture ratio, m = 100                         Chai +0.797  Cart +0.957  diff -0.173 [-0.218, -0.132]
+  S_q0.9    S at m_90%                                     Chai +0.470  Cart +0.724  diff -0.243 [-0.274, -0.212]
+  S_q0.95   S at m_95%                                     Chai +0.455  Cart +0.759  diff -0.298 [-0.321, -0.274]
+  S_q0.99   S at m_99%                                     Chai +0.453  Cart +0.821  diff -0.363 [-0.387, -0.335]
+  cap_q0.9  capture at m_90%                               Chai +0.817  Cart +0.888  diff -0.071 [-0.101, -0.045]
+  cap_q0.95 capture at m_95%                               Chai +0.823  Cart +0.935  diff -0.117 [-0.145, -0.093]
+  cap_q0.99 capture at m_99%                               Chai +0.823  Cart +0.976  diff -0.162 [-0.195, -0.129]
+  mean m reaching 90/95/99% of variance (chai | cart): ['258|43', '297|79', '302|165']
+  READING (UNION): MECHANISM REJECTED
+  chai: matched-axis |cos| by band [0.33, 0.17, 0.09, 0.06, 0.04];  held-out/train variance by band [0.98, 1.4, 1.64, 1.54, 1.46]
+  cart: matched-axis |cos| by band [0.37, 0.21, 0.13, 0.11, 0.1];  held-out/train variance by band [1.28, 2.29, 2.41, 2.96, 3.1]

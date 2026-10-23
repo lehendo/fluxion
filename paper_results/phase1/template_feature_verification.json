@@ -1,0 +1,1872 @@
+{
+ "1ab1_A": [
+  {
+   "frame": 0,
+   "n_tokens": 46,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 1.7881393432617188e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 1.7881393432617188e-07
+  },
+  {
+   "frame": 5000,
+   "n_tokens": 46,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 1.9744038581848145e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 1.9744038581848145e-07
+  },
+  {
+   "frame": 9999,
+   "n_tokens": 46,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 2.086162567138672e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.086162567138672e-07
+  }
+ ],
+ "1bq8_A": [
+  {
+   "frame": 0,
+   "n_tokens": 54,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 1.816079020500183e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 1.816079020500183e-07
+  },
+  {
+   "frame": 5000,
+   "n_tokens": 54,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 1.7881393432617188e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 1.7881393432617188e-07
+  },
+  {
+   "frame": 9999,
+   "n_tokens": 54,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 2.086162567138672e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.086162567138672e-07
+  }
+ ],
+ "1aol_A": [
+  {
+   "frame": 0,
+   "n_tokens": 228,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.384185791015625e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.384185791015625e-07
+  },
+  {
+   "frame": 5000,
+   "n_tokens": 228,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.980232238769531e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.980232238769531e-07
+  },
+  {
+   "frame": 9999,
+   "n_tokens": 228,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.384185791015625e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.384185791015625e-07
+  }
+ ],
+ "1b2s_E": [
+  {
+   "frame": 0,
+   "n_tokens": 90,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 1.7881393432617188e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 1.7881393432617188e-07
+  },
+  {
+   "frame": 5000,
+   "n_tokens": 90,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.022097086533904076,
+   "unit_max_abs_diff": 2.086162567138672e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.086162567138672e-07
+  },
+  {
+   "frame": 9999,
+   "n_tokens": 90,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.384185791015625e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.384185791015625e-07
+  }
+ ],
+ "1ah7_A": [
+  {
+   "frame": 0,
+   "n_tokens": 245,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.682209014892578e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.682209014892578e-07
+  },
+  {
+   "frame": 5000,
+   "n_tokens": 245,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.682209014892578e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.682209014892578e-07
+  },
+  {
+   "frame": 9999,
+   "n_tokens": 245,
+   "masks_all_true": true,
+   "template_slots_used": 1,
+   "num_templates": 1,
+   "dist_max_abs_diff_A": 0.03125,
+   "unit_max_abs_diff": 2.980232238769531e-07,
+   "unit_diag_max_abs_pipeline": 0.0,
+   "unit_diag_max_abs_mine": 0.0,
+   "template_feature_shapes": {
+    "BlockedAtomPairDistogram": [
+     [
+      1,
+      184,
+      32,
+      128,
+      1
+     ],
+     "torch.int64"
+    ],
+    "TemplateMask": [
+     [
+      1,
+      4,
+      256,
+      256,
+      2
+     ],
+     "torch.float32"
+    ],
+    "TemplateUnitVector": [
+     [
+      1,
+      4,
+      256,
+      256,
+      3
+     ],
+     "torch.float32"
+    ],
+    "TemplateResType": [
+     [
+      1,
+      4,
+      256,
+      1
+     ],
+     "torch.uint8"
+    ],
+    "TemplateDistogram": [
+     [
+      1,
+      4,
+      256,
+      256,
+      1
+     ],
+     "torch.int64"
+    ]
+   },
+   "template_input_shapes": {
+    "template_restype": [
+     1,
+     4,
+     256
+    ],
+    "template_pseudo_beta_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_backbone_frame_mask": [
+     1,
+     4,
+     256
+    ],
+    "template_distances": [
+     1,
+     4,
+     256,
+     256
+    ],
+    "template_unit_vector": [
+     1,
+     4,
+     256,
+     256,
+     3
+    ],
+    "num_templates": [
+     1
+    ],
+    "template_mask": [
+     1,
+     4,
+     256
+    ]
+   },
+   "feature_keys": {
+    "distogram": [
+     "TemplateDistogram"
+    ],
+    "unit": [
+     "TemplateUnitVector"
+    ]
+   },
+   "distogram_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    1
+   ],
+   "distogram_bin_mismatches": 0,
+   "unit_feature_shape": [
+    1,
+    4,
+    256,
+    256,
+    3
+   ],
+   "unit_feature_max_abs_diff_vs_mine": 2.980232238769531e-07
+  }
+ ]
+}

@@ -1,0 +1,28 @@
+
+SET13: 13 proteins / 11 entries   (POST HOC; Chai - Cart in points over identity, restricted to the top-m components)
+  linear_diag  m =    5: lead   +1.56 [  -0.44,   +3.49]   absolute Chai  +5.17  Cart  +3.61
+  linear_diag  m =   20: lead   +2.11 [  -0.64,   +4.82]   absolute Chai  +5.55  Cart  +3.44
+  linear_diag  m =   60: lead   +2.27 [  -0.43,   +5.18]   absolute Chai  +4.42  Cart  +2.14
+  linear_diag  m =  150: lead   +6.45 [  +2.09,  +11.38]   absolute Chai  +4.59  Cart  -1.86
+  linear_diag  m =  all: lead   +9.14 [  +3.46,  +15.45]   absolute Chai  +4.60  Cart  -4.53
+  shrink       m =    5: lead   +1.41 [  -6.89,   +9.39]   absolute Chai  -9.31  Cart -10.73
+  shrink       m =   20: lead   -0.22 [  -4.41,   +3.97]   absolute Chai  -0.07  Cart  +0.16
+  shrink       m =   60: lead   -0.12 [  -2.78,   +2.56]   absolute Chai  +4.36  Cart  +4.48
+  shrink       m =  150: lead   +1.20 [  -1.11,   +3.50]   absolute Chai  +7.27  Cart  +6.07
+  shrink       m =  all: lead   +1.98 [  -0.39,   +4.34]   absolute Chai  +8.79  Cart  +6.81
+  beyond component 60 (13 proteins with k > 60), chai: variance share 0.124, identity-error share 0.342
+  beyond component 60 (13 proteins with k > 60), cart: variance share 0.061, identity-error share 0.248
+
+UNION: 14 proteins / 12 entries   (POST HOC; Chai - Cart in points over identity, restricted to the top-m components)
+  linear_diag  m =    5: lead   +1.59 [  -0.25,   +3.36]   absolute Chai  +4.89  Cart  +3.29
+  linear_diag  m =   20: lead   +2.31 [  -0.27,   +4.77]   absolute Chai  +5.23  Cart  +2.92
+  linear_diag  m =   60: lead   +2.41 [  -0.11,   +5.07]   absolute Chai  +3.79  Cart  +1.37
+  linear_diag  m =  150: lead   +6.86 [  +2.73,  +11.45]   absolute Chai  +3.56  Cart  -3.30
+  linear_diag  m =  all: lead   +9.31 [  +4.08,  +15.08]   absolute Chai  +3.18  Cart  -6.14
+  shrink       m =    5: lead   -0.49 [  -8.87,   +7.65]   absolute Chai -10.33  Cart  -9.84
+  shrink       m =   20: lead   -0.72 [  -4.61,   +3.24]   absolute Chai  -0.58  Cart  +0.15
+  shrink       m =   60: lead   -0.20 [  -2.62,   +2.24]   absolute Chai  +3.92  Cart  +4.12
+  shrink       m =  150: lead   +1.24 [  -0.86,   +3.34]   absolute Chai  +6.83  Cart  +5.59
+  shrink       m =  all: lead   +2.08 [  -0.11,   +4.23]   absolute Chai  +8.34  Cart  +6.26
+  beyond component 60 (14 proteins with k > 60), chai: variance share 0.122, identity-error share 0.354
+  beyond component 60 (14 proteins with k > 60), cart: variance share 0.057, identity-error share 0.239

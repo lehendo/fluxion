@@ -1,0 +1,52 @@
+
+===== SET13: 13 proteins / 11 entries; intervals: 95% and 97.5% (m = 2 sets) =====
+  UNWHITENED   linear_diag  10ps Chai - Cart =   +9.14 [  +3.46,  +15.45]  m=2: [  +2.78,  +16.44]  entries>0: 9/11
+  UNWHITENED   shrink       10ps Chai - Cart =   +1.98 [  -0.39,   +4.34]  m=2: [  -0.72,   +4.65]  entries>0: 7/11
+  UNWHITENED   noint        10ps Chai - Cart =   +9.14 [  +3.47,  +15.46]  m=2: [  +2.78,  +16.45]  entries>0: 9/11
+  C1 WHITENED  linear_diag  10ps Chai - Cart =  +21.49 [  +5.66,  +40.08]  m=2: [  +3.96,  +43.25]  entries>0: 8/11
+  C1 WHITENED  shrink       10ps Chai - Cart =  +19.19 [  +5.05,  +35.69]  m=2: [  +3.59,  +38.27]  entries>0: 8/11
+  C1 WHITENED  noint        10ps Chai - Cart =  +21.51 [  +5.69,  +40.09]  m=2: [  +3.99,  +43.25]  entries>0: 8/11
+    absolute UNWHITENED  linear_diag  Chai   +4.60  Cart   -4.53
+    absolute UNWHITENED  shrink       Chai   +8.79  Cart   +6.81
+    absolute UNWHITENED  noint        Chai   +4.61  Cart   -4.53
+    absolute C1 WHITENED linear_diag  Chai   +6.45  Cart  -15.04
+    absolute C1 WHITENED shrink       Chai   +6.63  Cart  -12.56
+    absolute C1 WHITENED noint        Chai   +6.47  Cart  -15.04
+
+  C2 variance-weighted band contributions to the linear_diag improvement over identity (points; bands [1-5],[6-20],[21-60],[61-150],[151-384]):
+    Chai : [1.09 1.7  1.48 1.94 0.41]
+    Cart : [ 1.09  2.17  0.98 -2.39 -3.08]
+    LEAD : [-0.   -0.48  0.49  4.33  3.49] sum +7.84
+    halves: lead from index <= k/2 +4.56, from index > k/2 +3.28; tail share of the lead 41.8%
+    variance fraction by band, chai: [0.555 0.199 0.122 0.08  0.044]
+    variance fraction by band, cart: [0.62  0.216 0.103 0.044 0.017]
+    UNWEIGHTED per-dimension % improvement over identity by band (linear_diag):  Chai [5.  6.1 5.2 9.7 nan]  Cart [ 4.3  5.8  2.8 -5.9  nan]
+
+  READINGS (SET13): C1 SURVIVES   C2 MIXED   C3 SLOPE-DRIVEN
+  DECISION RULE: the per-channel-linear lead is REAL (write the registered sentence)
+
+===== UNION: 14 proteins / 12 entries; intervals: 95% and 97.5% (m = 2 sets) =====
+  UNWHITENED   linear_diag  10ps Chai - Cart =   +9.31 [  +4.08,  +15.08]  m=2: [  +3.43,  +15.90]  entries>0: 10/12
+  UNWHITENED   shrink       10ps Chai - Cart =   +2.08 [  -0.11,   +4.23]  m=2: [  -0.41,   +4.53]  entries>0: 8/12
+  UNWHITENED   noint        10ps Chai - Cart =   +9.33 [  +4.10,  +15.09]  m=2: [  +3.45,  +15.91]  entries>0: 10/12
+  C1 WHITENED  linear_diag  10ps Chai - Cart =  +27.10 [  +9.61,  +47.25]  m=2: [  +7.39,  +50.38]  entries>0: 9/12
+  C1 WHITENED  shrink       10ps Chai - Cart =  +25.73 [  +8.78,  +45.62]  m=2: [  +6.72,  +48.84]  entries>0: 9/12
+  C1 WHITENED  noint        10ps Chai - Cart =  +27.12 [  +9.64,  +47.27]  m=2: [  +7.42,  +50.40]  entries>0: 9/12
+    absolute UNWHITENED  linear_diag  Chai   +3.18  Cart   -6.14
+    absolute UNWHITENED  shrink       Chai   +8.34  Cart   +6.26
+    absolute UNWHITENED  noint        Chai   +3.19  Cart   -6.14
+    absolute C1 WHITENED linear_diag  Chai   +3.98  Cart  -23.11
+    absolute C1 WHITENED shrink       Chai   +4.60  Cart  -21.13
+    absolute C1 WHITENED noint        Chai   +4.01  Cart  -23.11
+
+  C2 variance-weighted band contributions to the linear_diag improvement over identity (points; bands [1-5],[6-20],[21-60],[61-150],[151-384]):
+    Chai : [ 1.02  1.6   1.23  1.49 -0.08]
+    Cart : [ 1.01  1.88  0.61 -3.09 -3.24]
+    LEAD : [ 0.01 -0.28  0.62  4.58  3.15] sum +8.08
+    halves: lead from index <= k/2 +5.22, from index > k/2 +2.87; tail share of the lead 35.5%
+    variance fraction by band, chai: [0.555 0.201 0.121 0.079 0.044]
+    variance fraction by band, cart: [0.635 0.212 0.096 0.041 0.016]
+    UNWEIGHTED per-dimension % improvement over identity by band (linear_diag):  Chai [4.8 5.8 4.2 7.8 nan]  Cart [  4.    4.8   0.1 -16.8   nan]
+
+  READINGS (UNION): C1 SURVIVES   C2 MIXED   C3 SLOPE-DRIVEN
+  DECISION RULE: the per-channel-linear lead is REAL (write the registered sentence)

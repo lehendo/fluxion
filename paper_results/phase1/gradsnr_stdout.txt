@@ -1,0 +1,41 @@
+[snr] 39,864,576 parameters (11,088,000 in the gate/adaLN-zero group); ckpt step 192325
+[dataset] Loaded normalization stats from $FLUXION_DATA/latents/norm_stats.pt
+[dataset] 19 proteins, 570057 total frames
+[snr] 256/4096 microbatches, 306s, mean loss 0.00410
+[snr] 512/4096 microbatches, 625s, mean loss 0.00407
+[snr] 768/4096 microbatches, 929s, mean loss 0.00409
+[snr] 1024/4096 microbatches, 1237s, mean loss 0.00402
+[snr] 1280/4096 microbatches, 1550s, mean loss 0.00400
+[snr] 1536/4096 microbatches, 1849s, mean loss 0.00398
+[snr] 1792/4096 microbatches, 2149s, mean loss 0.00398
+[snr] 2048/4096 microbatches, 2447s, mean loss 0.00395
+[snr] 2304/4096 microbatches, 2760s, mean loss 0.00394
+[snr] 2560/4096 microbatches, 3058s, mean loss 0.00393
+[snr] 2816/4096 microbatches, 3369s, mean loss 0.00392
+[snr] 3072/4096 microbatches, 3683s, mean loss 0.00393
+[snr] 3328/4096 microbatches, 3960s, mean loss 0.00392
+[snr] 3584/4096 microbatches, 4256s, mean loss 0.00393
+[snr] 3840/4096 microbatches, 4555s, mean loss 0.00391
+[snr] 4096/4096 microbatches, 4867s, mean loss 0.00391
+{
+ "norm_Eg": 0.00012330981064303221,
+ "std_g_per_microbatch": 0.0006259890521449345,
+ "kstar": 25.77141201639535,
+ "snr_k1": 0.19698397315498486,
+ "snr_curve": {
+  "1": 0.19698397315498486,
+  "4": 0.39396794630996973,
+  "16": 0.7879358926199395,
+  "64": 1.575871785239879,
+  "256": 3.151743570479758
+ },
+ "mean_loss": 0.003910808902409357
+}
+gate group: {"kstar": 25.84321805542209, "snr_curve": {"1": 0.19671012030474966, "4": 0.3934202406094993, "16": 0.7868404812189986, "64": 1.5736809624379973, "256": 3.1473619248759945}}
+empirical vs predicted mean sq norm of k-averaged gradient:
+  k=   1 (effective batch     4): empirical 4.0707e-07  predicted 4.0707e-07  (4096 groups)
+  k=   4 (effective batch    16): empirical 1.1242e-07  predicted 1.1317e-07  (1024 groups)
+  k=  16 (effective batch    64): empirical 3.9256e-08  predicted 3.9697e-08  (256 groups)
+  k=  64 (effective batch   256): empirical 2.0516e-08  predicted 2.1328e-08  (64 groups)
+  k= 256 (effective batch  1024): empirical 1.6563e-08  predicted 1.6736e-08  (16 groups)
+fraction of coordinates with per-coordinate SNR>1 at k: {'1': 0.0011591996299102902, '4': 0.016153715550899506, '16': 0.10949741303920746, '64': 0.2851119041442871, '256': 0.4797249734401703}

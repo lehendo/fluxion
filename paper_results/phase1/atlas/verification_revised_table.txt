@@ -1,0 +1,22 @@
+protein          res         atoms  frames/dt | aligned     R2     R3 |  sh1/4  sh1/2  sh3/4 | verdicts
+16pk_A     415/415     6378/6378           ok |   0.223  0.151  0.191 |  0.101  0.163  0.140 | orig FAIL  revised FAIL (half-only FAIL)
+1a62_A     130/130     2065/2065           ok |   0.328  0.310  0.246 |  0.326 -0.005  0.212 | orig FAIL  revised FAIL (half-only PASS)
+1ab1_A      46/46       639/639            ok |   0.648 -0.029  0.002 | -0.074  0.040  0.018 | orig PASS  revised PASS (half-only PASS)
+1af7_A     274/274     4438/4438           ok |   0.618  0.541  0.512 |  0.151 -0.067  0.020 | orig FAIL  revised PASS (half-only PASS)
+1ah7_A     245/245     3896/3896           ok |   0.674  0.365  0.300 |  0.352  0.281  0.275 | orig PASS  revised PASS (half-only PASS)
+1ail_A      73/73      1172/1172           ok |   0.071  0.005 -0.080 |  0.101  0.142  0.242 | orig FAIL  revised FAIL (half-only FAIL)
+1aol_A     228/228     3456/3456           ok |   0.609  0.436  0.446 |  0.193  0.232  0.380 | orig PASS  revised PASS (half-only PASS)
+1b0n_A     111/111     1829/1829           ok |   0.548  0.355  0.402 |  0.240  0.459  0.309 | orig FAIL  revised FAIL (half-only FAIL)
+1b25_D     619/619     9686/9686           ok |   0.685  0.445  0.627 |  0.172  0.017  0.191 | orig FAIL  revised PASS (half-only PASS)
+1b2s_E      90/90      1447/1447           ok |   0.664  0.558  0.350 |  0.194  0.367  0.030 | orig FAIL  revised PASS (half-only PASS)
+1b2s_F      90/90      1447/1447           ok |   0.600  0.132  0.165 |  0.063 -0.080  0.036 | orig PASS  revised PASS (half-only PASS)
+1b8d_K     164/164     2453/2453           ok |   0.704  0.571  0.199 |  0.018 -0.129 -0.075 | orig FAIL  revised PASS (half-only PASS)
+1bgf_A     124/124     2051/2051           ok |   0.314  0.114  0.185 |  0.037  0.352  0.009 | orig FAIL  revised FAIL (half-only FAIL)
+1bkp_A     278/278     4547/4547           ok |   0.488  0.410  0.312 |  0.153  0.253  0.199 | orig FAIL  revised PASS (half-only PASS)
+1bq8_A      54/54       809/809            ok |   0.536  0.114  0.252 | -0.038 -0.018 -0.001 | orig PASS  revised PASS (half-only PASS)
+1btk_A     169/169     2809/2809           ok |   0.603  0.251  0.363 |  0.082  0.071  0.295 | orig PASS  revised PASS (half-only PASS)
+1bx7_A      55/55       783/783            ok |   0.260  0.099  0.126 |  0.069  0.042  0.287 | orig FAIL  revised FAIL (half-only PASS)
+1bxy_A      60/60      1006/1006           ok |   0.555 -0.017  0.058 |  0.089  0.251  0.017 | orig PASS  revised PASS (half-only PASS)
+1bxy_B      60/60      1006/1006           ok |   0.580  0.039  0.105 |  0.040  0.019 -0.013 | orig PASS  revised PASS (half-only PASS)
+
+NOT VERIFIED for: ['16pk_A', '1a62_A', '1af7_A', '1ail_A', '1b0n_A', '1b25_D', '1b2s_E', '1b8d_K', '1bgf_A', '1bkp_A', '1bx7_A']

@@ -1,0 +1,46 @@
+protein  n_res   sigma2_o    pooled  ratio max/min    Var0  nu0 %    Var1  nu1 %  g1 obs g1 free
+16pk_A     415   0.000287  0.000278  1.031   1.024  0.0073   3.95  0.0085   3.36   16.15   14.97
+1a62_A     130   0.000526  0.000513  1.026   1.026  0.0088   5.98  0.0100   5.28   14.07   12.07
+1ab1_A      46   0.000556  0.000545  1.020   1.017  0.0099   5.59  0.0107   5.22   14.88   12.94
+1af7_A     274   0.000670  0.000650  1.030   1.026  0.0100   6.72  0.0119   5.64   13.24   11.05
+1ah7_A     245   0.000578  0.000564  1.025   1.021  0.0134   4.32  0.0190   3.04   10.95    9.73
+1ail_A      73   0.000588  0.000575  1.023   1.021  0.0116   5.09  0.0130   4.54   15.65   14.02
+1aol_A     228   0.000355  0.000348  1.021   1.018  0.0195   1.82  0.0263   1.35    7.74    7.16
+1b0n_A     111   0.000797  0.000781  1.021   1.020  0.0097   8.24  0.0126   6.35    4.37    1.27
+1b25_D     619   0.000319  0.000313  1.016   1.014  0.0126   2.53  0.0164   1.95   13.96   13.24
+1b2s_E      90   0.000664  0.000649  1.024   1.025  0.0051  12.95  0.0054  12.37   16.59   11.87
+1b2s_F      90   0.000644  0.000629  1.024   1.021  0.0054  11.91  0.0066   9.75   15.89   12.21
+1b8d_K     164   0.000606  0.000577  1.051   1.043  0.0363   1.67  0.0488   1.24    2.74    2.14
+1bgf_A     124   0.000712  0.000644  1.106   1.097  0.0171   4.18  0.0190   3.76    9.26    7.67
+1bkp_A     278   0.000370  0.000359  1.032   1.029  0.0121   3.06  0.0147   2.52   14.44   13.52
+1bq8_A      54   0.000659  0.000644  1.024   1.019  0.0071   9.23  0.0086   7.63   12.10    8.97
+1btk_A     169   0.000540  0.000531  1.017   1.014  0.0094   5.72  0.0107   5.03   14.02   12.12
+1bx7_A      55   0.000623  0.000594  1.049   1.040  0.0226   2.76  0.0255   2.44    9.21    8.19
+1bxy_A      60   0.000826  0.000807  1.024   1.020  0.0052  15.79  0.0059  13.92   16.60   11.20
+1bxy_B      60   0.000813  0.000789  1.030   1.025  0.0053  15.23  0.0057  14.27   16.41   10.81
+
+R1: proteins with max/min of the three pairwise MSEs > 1.10: []
+R2: sigma_o^2 median 0.000606, range [0.000287, 0.000826] (max/min 2.88); outside +-25% of the median: ['16pk_A', '1aol_A', '1b0n_A', '1b25_D', '1bkp_A', '1bxy_A', '1bxy_B']; HOMOGENEOUS = False
+    Spearman with n_res -0.57 (p=0.010), with Var_V0 -0.35 (p=0.139)
+    pilot constant 0.000593: mean |relative deviation| over the 19 = 20.4%, range of ratio 0.48-1.39; the three pilot proteins re-measured: {'1ab1_A': 0.000556, '1bq8_A': 0.000659, '1bx7_A': 0.000623}
+noise MSE between two extractions as % of the 10 ps step MSE (identity): min 6.8, max 41.3, mean 18.8 [13.4, 23.9]
+noise share nu (V0, own mean), percent: mean 6.67 [4.28, 9.04], range 1.67-15.79;  (V1) mean 5.77 [3.58, 7.97], range 1.24-14.27
+sigma_o^2 mean 0.000586 [0.000504, 0.000658] median 0.000606
+noise variance by protein, ascending: 16pk_A(415) 0.000287, 1b25_D(619) 0.000319, 1aol_A(228) 0.000355, 1bkp_A(278) 0.000370, 1a62_A(130) 0.000526, 1btk_A(169) 0.000540, 1ab1_A(46) 0.000556, 1ah7_A(245) 0.000578, 1ail_A(73) 0.000588, 1b8d_K(164) 0.000606, 1bx7_A(55) 0.000623, 1b2s_F(90) 0.000644, 1bq8_A(54) 0.000659, 1b2s_E(90) 0.000664, 1af7_A(274) 0.000670, 1bgf_A(124) 0.000712, 1b0n_A(111) 0.000797, 1bxy_B(60) 0.000813, 1bxy_A(60) 0.000826
+R4 flagged (nu >= 0.5 or rho > 1): V0 []  V1 []
+
+DECOMPOSITION (shrinkage improvement over identity at 10 ps, %, mean over 19 proteins [95% CI]):
+  own mean, noisy latents (as first measured)           15.22 [ 13.01,  17.02]
+  mean from the other replicas, noisy latents           12.54 [ 10.37,  14.28]
+  + noise removed, per-protein (HEADLINE, V1)           10.27 [  8.49,  11.73]   (pilot-based pooled estimate was 10.40 [8.60, 11.80])
+  other order: noise removed first (own mean), per-protein  12.76 [ 10.82,  14.38]   (pilot-based 12.89)
+  noise-attributable points: own mean 2.47 [1.62, 3.31]; other-replica mean 2.27 [1.44, 3.12]
+  R3 reading: headline minus pilot-based 10.40 = -0.13 points (old half-width 1.6) -> extrapolation CONFIRMED
+
+ROBUSTNESS (common multiplier of every protein's measured noise variance):
+  x0.50:  11.46 [  9.52,  13.02]
+  x0.75:  10.88 [  9.01,  12.39]
+  x1.00:  10.27 [  8.52,  11.75]
+  x1.25:   9.63 [  7.89,  11.14]
+  x1.50:   8.96 [  7.25,  10.59]
+  x2.00:   7.51 [  5.63,   9.42]

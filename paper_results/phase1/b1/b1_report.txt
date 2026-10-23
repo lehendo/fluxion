@@ -1,0 +1,82 @@
+
+##################### set original8
+proteins: ['1ab1_A', '1ah7_A', '1aol_A', '1b2s_F', '1bq8_A', '1btk_A', '1bxy_A', '1bxy_B']  ->  7 PDB entries
+
+=== lag 100ps ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag           9.36          5.67 |    +3.69 [   -1.94,  +10.89]              | 3/7              0.211
+linear_full          -7.22        -20.26 |   +13.04 [   -0.51,  +28.59]              | 4/7              0.117
+shrink               10.89         13.68 |    -2.79 [   -6.62,   +1.04]              | 3/7              0.875
+mlp                 -57.72        -69.76 |   +12.04 [  -20.98,  +63.56]              | 2/7              0.469
+mean                -83.09       -109.42 |   +26.33 [  -17.18,  +84.27]              | 3/7              0.258
+id/mean               0.58          0.61 |    -0.03 [   -0.17,   +0.08]              | 3/7              0.641
+
+=== lag 1ns ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag          11.14         11.54 |    -0.41 [   -4.52,   +4.36]              | 3/7              0.555
+linear_full         -13.00        -23.99 |   +10.98 [   -3.37,  +29.13]              | 3/7              0.188
+shrink               14.86         19.18 |    -4.32 [   -8.73,   +0.17]              | 2/7              0.930
+mlp                 -39.23        -31.49 |    -7.74 [  -28.12,  +18.84]              | 2/7              0.727
+mean                -37.86        -35.53 |    -2.33 [  -19.95,  +18.49]              | 3/7              0.578
+id/mean               0.77          0.87 |    -0.09 [   -0.24,   +0.03]              | 3/7              0.844
+
+=== lag 10ns ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag          15.80         19.15 |    -3.35 [   -7.61,   +2.34]              | 1/7              0.875
+linear_full          -9.25        -18.62 |    +9.37 [   -7.37,  +32.34]              | 3/7              0.305
+shrink               21.24         26.67 |    -5.43 [  -10.25,   -0.05] v            | 2/7              0.945
+mlp                 -12.34         -2.29 |   -10.04 [  -22.91,   +4.34]              | 2/7              0.891
+mean                  0.44          8.76 |    -8.33 [  -18.10,   +3.58]              | 2/7              0.891
+id/mean               1.06          1.21 |    -0.14 [   -0.28,   -0.02] v            | 2/7              0.953
+
+=== lag 50ns  (NOT interpretable, n_eff~2) ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag          24.63         27.50 |    -2.87 [   -8.02,   +5.12]              | 1/7              0.750
+linear_full         -24.07         -4.14 |   -19.93 [  -44.80,   -1.91] v            | 2/7              0.953
+shrink               29.38         34.63 |    -5.26 [   -9.28,   +0.21]              | 1/7              0.945
+mlp                   8.88         19.22 |   -10.34 [  -18.46,   -1.82] v            | 1/7              0.969
+mean                 22.80         29.87 |    -7.06 [  -14.26,   +1.36]              | 1/7              0.930
+id/mean               1.40          1.55 |    -0.15 [   -0.24,   -0.04] v            | 1/7              0.984
+
+* = CI above 0 (Chai-1 better), v = CI below 0 (Cartesian better), blank = CI includes 0
+
+##################### set revised13
+proteins: ['1ab1_A', '1af7_A', '1ah7_A', '1aol_A', '1b25_D', '1b2s_E', '1b2s_F', '1b8d_K', '1bkp_A', '1bq8_A', '1btk_A', '1bxy_A', '1bxy_B']  ->  11 PDB entries
+
+=== lag 100ps ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag           4.56         -2.53 |    +7.10 [   +2.10,  +12.47] *            | 7/11              0.017
+linear_full         -20.07        -48.48 |   +28.41 [  +10.37,  +49.31] *            | 9/11              0.007
+shrink               10.91         10.36 |    +0.56 [   -2.85,   +3.89]              | 7/11              0.381
+mlp                 -71.49       -113.77 |   +42.28 [   +0.52,  +90.40] *            | 5/11              0.076
+mean                -97.77       -212.93 |  +115.16 [  +19.22, +235.20] *            | 7/11              0.023
+id/mean               0.55          0.49 |    +0.06 [   -0.06,   +0.16]              | 7/11              0.177
+
+=== lag 1ns ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag           5.49          1.14 |    +4.35 [   -0.32,   +9.34]              | 6/11              0.061
+linear_full         -26.15        -63.84 |   +37.69 [  +11.22,  +69.33] *            | 7/11              0.010
+shrink               14.72         14.89 |    -0.17 [   -4.28,   +4.06]              | 6/11              0.525
+mlp                 -48.18        -69.68 |   +21.50 [  -10.03,  +59.22]              | 5/11              0.152
+mean                -48.41        -79.39 |   +30.98 [   -1.74,  +73.93]              | 7/11              0.074
+id/mean               0.73          0.71 |    +0.02 [   -0.12,   +0.14]              | 7/11              0.396
+
+=== lag 10ns ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag          11.16          6.56 |    +4.60 [   -2.33,  +12.90]              | 5/11              0.153
+linear_full         -15.67        -41.31 |   +25.64 [   +7.31,  +45.42] *            | 7/11              0.019
+shrink               21.53         22.06 |    -0.53 [   -5.50,   +5.01]              | 5/11              0.576
+mlp                 -14.81        -17.21 |    +2.40 [  -11.58,  +18.63]              | 6/11              0.395
+mean                 -2.87         -6.04 |    +3.17 [   -9.83,  +19.54]              | 5/11              0.373
+id/mean               1.04          1.05 |    -0.01 [   -0.15,   +0.14]              | 5/11              0.580
+
+=== lag 50ns  (NOT interpretable, n_eff~2) ===
+predictor     Chai % vs id  Cart % vs id |              paired diff Chai-Cart | entries Chai>Cart  sign-flip p
+linear_diag          26.79         22.04 |    +4.75 [   -4.93,  +17.21]              | 4/11              0.262
+linear_full         -19.74        -14.61 |    -5.13 [  -26.32,  +13.43]              | 4/11              0.662
+shrink               32.09         31.89 |    +0.20 [   -6.59,   +8.38]              | 4/11              0.483
+mlp                  13.05         15.61 |    -2.56 [  -11.67,   +7.58]              | 4/11              0.688
+mean                 27.36         25.38 |    +1.98 [   -8.25,  +14.73]              | 4/11              0.398
+id/mean               1.47          1.48 |    -0.01 [   -0.17,   +0.19]              | 4/11              0.535
+
+* = CI above 0 (Chai-1 better), v = CI below 0 (Cartesian better), blank = CI includes 0

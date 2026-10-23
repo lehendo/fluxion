@@ -1,0 +1,35 @@
+simulation check of the analytic nulls (random subspaces / unit vectors):
+  D =    138, m = 100: S_m simulated 0.7250 vs m/D 0.7246;  E|cos| simulated 0.0659 vs analytic 0.0680
+  D =    700, m = 100: S_m simulated 0.1424 vs m/D 0.1429;  E|cos| simulated 0.0302 vs analytic 0.0302
+  D =  20000, m = 100: S_m simulated 0.0049 vs m/D 0.0050;  E|cos| simulated 0.0062 vs analytic 0.0056
+  D = 150000, m = 100: S_m simulated 0.0007 vs m/D 0.0007;  E|cos| simulated 0.0020 vs analytic 0.0021
+
+===== SET13: 13 proteins / 11 entries =====
+  ambient D: Chai 70213 (range 17664-237696), Cart 549 (range 138-1857)
+  chance levels, mean over proteins: S_100 null Chai 0.0025, Cart 0.321; capture null Chai 0.0027, Cart 0.327; E|cos| Chai 0.0038, Cart 0.043
+  kS100     kappa S_100                            Chai +0.518  Cart +0.732  diff (Chai - Cart) -0.214 [-0.241, -0.191]  (n entries 11)
+  kC100     kappa capture m = 100                  Chai +0.791  Cart +0.939  diff (Chai - Cart) -0.148 [-0.181, -0.116]  (n entries 11)
+  kaxis     kappa matched-axis |cos| idx 61-137    Chai +0.046  Cart +0.064  diff (Chai - Cart) -0.018 [-0.036, -0.004]  (n entries 11)
+  kS_q0.9   kappa S at m_90%                       Chai +0.469  Cart +0.694  diff (Chai - Cart) -0.225 [-0.255, -0.194]  (n entries 11)
+  kS_q0.95  kappa S at m_95%                       Chai +0.450  Cart +0.707  diff (Chai - Cart) -0.256 [-0.283, -0.227]  (n entries 11)
+  kS_q0.99  kappa S at m_99%                       Chai +0.448  Cart +0.713  diff (Chai - Cart) -0.265 [-0.296, -0.233]  (n entries 11)
+  kC_q0.9   kappa capture at m_90%                 Chai +0.813  Cart +0.885  diff (Chai - Cart) -0.072 [-0.097, -0.054]  (n entries 11)
+  kC_q0.95  kappa capture at m_95%                 Chai +0.820  Cart +0.926  diff (Chai - Cart) -0.106 [-0.134, -0.083]  (n entries 11)
+  kC_q0.99  kappa capture at m_99%                 Chai +0.820  Cart +0.964  diff (Chai - Cart) -0.143 [-0.172, -0.115]  (n entries 11)
+  Cartesian kappa_S100 median 0.741; fraction of proteins with a Cartesian null above 0.5 at m = 100: 0.31
+  READING (SET13): NO CARTESIAN DEFICIT, WITH POWER
+
+===== UNION: 14 proteins / 12 entries =====
+  ambient D: Chai 68242 (range 17664-237696), Cart 533 (range 138-1857)
+  chance levels, mean over proteins: S_100 null Chai 0.0025, Cart 0.319; capture null Chai 0.0026, Cart 0.325; E|cos| Chai 0.0038, Cart 0.043
+  kS100     kappa S_100                            Chai +0.508  Cart +0.726  diff (Chai - Cart) -0.218 [-0.243, -0.196]  (n entries 12)
+  kC100     kappa capture m = 100                  Chai +0.778  Cart +0.944  diff (Chai - Cart) -0.165 [-0.211, -0.125]  (n entries 12)
+  kaxis     kappa matched-axis |cos| idx 61-137    Chai +0.045  Cart +0.062  diff (Chai - Cart) -0.017 [-0.033, -0.004]  (n entries 12)
+  kS_q0.9   kappa S at m_90%                       Chai +0.458  Cart +0.679  diff (Chai - Cart) -0.221 [-0.249, -0.191]  (n entries 12)
+  kS_q0.95  kappa S at m_95%                       Chai +0.440  Cart +0.699  diff (Chai - Cart) -0.258 [-0.282, -0.231]  (n entries 12)
+  kS_q0.99  kappa S at m_99%                       Chai +0.438  Cart +0.714  diff (Chai - Cart) -0.276 [-0.311, -0.241]  (n entries 12)
+  kC_q0.9   kappa capture at m_90%                 Chai +0.804  Cart +0.867  diff (Chai - Cart) -0.063 [-0.090, -0.038]  (n entries 12)
+  kC_q0.95  kappa capture at m_95%                 Chai +0.810  Cart +0.917  diff (Chai - Cart) -0.107 [-0.132, -0.086]  (n entries 12)
+  kC_q0.99  kappa capture at m_99%                 Chai +0.811  Cart +0.963  diff (Chai - Cart) -0.152 [-0.183, -0.122]  (n entries 12)
+  Cartesian kappa_S100 median 0.714; fraction of proteins with a Cartesian null above 0.5 at m = 100: 0.29
+  READING (UNION): NO CARTESIAN DEFICIT, WITH POWER

@@ -1,0 +1,20 @@
+{
+ "1ab1_A": {
+  "mse_C1_minus_C2": 0.001079890294931829,
+  "offset_share_of_mse": 0.03242294117808342,
+  "mean_pairwise_cosine_between_frames": -0.0009736642241477966,
+  "cosine_frame0_vs_frame1": 0.02856997400522232
+ },
+ "1bq8_A": {
+  "mse_C1_minus_C2": 0.0012862842995673418,
+  "offset_share_of_mse": 0.03115723468363285,
+  "mean_pairwise_cosine_between_frames": -0.0021438314579427242,
+  "cosine_frame0_vs_frame1": 0.01582881063222885
+ },
+ "1bx7_A": {
+  "mse_C1_minus_C2": 0.0011977332178503275,
+  "offset_share_of_mse": 0.03167850896716118,
+  "mean_pairwise_cosine_between_frames": -0.0016483701765537262,
+  "cosine_frame0_vs_frame1": 0.0749407410621643
+ }
+}

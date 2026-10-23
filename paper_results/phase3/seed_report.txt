@@ -1,0 +1,6 @@
+seed | attained held-out flow reduction EMA (x prediction) / raw | D_EMA, D_raw (points) | one-step held-out EMA / raw | mean signed R - f (EMA, raw)
+  0 | 0.0546 (1.01) / 0.0544 | 0.50, 0.15 | +15.31 / +15.21 | -0.06, -0.07
+  1 | 0.0561 (1.04) / 0.0532 | 0.50, 0.58 | +15.66 / +15.40 | +0.10, -0.19
+  2 | 0.0362 (0.67) / 0.0489 | 9.44, 2.54 | +14.80 / +15.16 | -1.91, -0.63
+READING: OTHER
+three-seed spread: attained EMA 0.0362-0.0561

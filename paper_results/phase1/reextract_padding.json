@@ -1,0 +1,143 @@
+{
+ "1ab1_A": {
+  "within": {
+   "orig": true,
+   "C1": true,
+   "C2": true,
+   "C3": true
+  },
+  "vs_orig": {
+   "C1": {
+    "0": true,
+    "599": true
+   },
+   "C2": {
+    "0": true,
+    "250": true,
+    "499": true,
+    "500": true,
+    "550": true,
+    "599": true
+   },
+   "C3": {
+    "0": false,
+    "250": false,
+    "499": false,
+    "500": false,
+    "550": false,
+    "599": false
+   }
+  },
+  "real_token_max_abs_diff_vs_orig": {
+   "C1": 0.21821379661560059,
+   "C2": 0.2505529820919037,
+   "C3": 0.20623183250427246
+  },
+  "cross": {
+   "C1~C2": true,
+   "C1~C3": false,
+   "C2~C3": false
+  },
+  "n_shards": {
+   "orig": 2,
+   "C1": 2,
+   "C2": 2,
+   "C3": 5
+  },
+  "reading": "R-HARDWARE"
+ },
+ "1bq8_A": {
+  "within": {
+   "orig": true,
+   "C1": true,
+   "C2": true,
+   "C3": true
+  },
+  "vs_orig": {
+   "C1": {
+    "0": true,
+    "599": true
+   },
+   "C2": {
+    "0": true,
+    "250": true,
+    "499": true,
+    "500": true,
+    "550": true,
+    "599": true
+   },
+   "C3": {
+    "0": false,
+    "250": false,
+    "499": false,
+    "500": false,
+    "550": false,
+    "599": false
+   }
+  },
+  "real_token_max_abs_diff_vs_orig": {
+   "C1": 0.2557373642921448,
+   "C2": 0.26698994636535645,
+   "C3": 0.22591447830200195
+  },
+  "cross": {
+   "C1~C2": true,
+   "C1~C3": false,
+   "C2~C3": false
+  },
+  "n_shards": {
+   "orig": 2,
+   "C1": 2,
+   "C2": 2,
+   "C3": 5
+  },
+  "reading": "R-HARDWARE"
+ },
+ "1bx7_A": {
+  "within": {
+   "orig": true,
+   "C1": true,
+   "C2": true,
+   "C3": true
+  },
+  "vs_orig": {
+   "C1": {
+    "0": true,
+    "599": true
+   },
+   "C2": {
+    "0": true,
+    "250": true,
+    "499": true,
+    "500": true,
+    "550": true,
+    "599": true
+   },
+   "C3": {
+    "0": false,
+    "250": false,
+    "499": false,
+    "500": false,
+    "550": false,
+    "599": false
+   }
+  },
+  "real_token_max_abs_diff_vs_orig": {
+   "C1": 0.26223206520080566,
+   "C2": 0.25403517484664917,
+   "C3": 0.29140448570251465
+  },
+  "cross": {
+   "C1~C2": true,
+   "C1~C3": false,
+   "C2~C3": false
+  },
+  "n_shards": {
+   "orig": 2,
+   "C1": 2,
+   "C2": 2,
+   "C3": 5
+  },
+  "reading": "R-HARDWARE"
+ }
+}

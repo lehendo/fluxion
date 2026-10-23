@@ -1,0 +1,18 @@
+
+===== SET13: 13 proteins / 11 entries; points over identity at 10 ps; 95% CI [Bonferroni m = 4 CI] =====
+  linear_diag  Chai - Cart    +9.14 [  +3.46,  +15.45] [  +2.18,  +17.36]   absolute: Chai  +4.60  TF  -5.67  Cart  -4.53
+  linear_diag  Chai - TF     +10.27 [  +2.64,  +19.87] [  +1.12,  +22.74]   absolute: Chai  +4.60  TF  -5.67  Cart  -4.53
+  linear_diag  TF - Cart      -1.14 [  -6.04,   +2.79] [  -7.51,   +3.55]   absolute: Chai  +4.60  TF  -5.67  Cart  -4.53
+  shrink       Chai - Cart    +1.98 [  -0.39,   +4.34] [  -0.99,   +4.94]   absolute: Chai  +8.79  TF  +7.99  Cart  +6.81
+  shrink       Chai - TF      +0.80 [  -1.43,   +2.99] [  -2.02,   +3.51]   absolute: Chai  +8.79  TF  +7.99  Cart  +6.81
+  shrink       TF - Cart      +1.18 [  +0.73,   +1.72] [  +0.63,   +1.88]   absolute: Chai  +8.79  TF  +7.99  Cart  +6.81
+
+===== UNION: 14 proteins / 12 entries; points over identity at 10 ps; 95% CI [Bonferroni m = 4 CI] =====
+  linear_diag  Chai - Cart    +9.31 [  +4.08,  +15.08] [  +2.87,  +16.71]   absolute: Chai  +3.18  TF -11.50  Cart  -6.14
+  linear_diag  Chai - TF     +14.67 [  +4.49,  +27.30] [  +2.62,  +31.37]   absolute: Chai  +3.18  TF -11.50  Cart  -6.14
+  linear_diag  TF - Cart      -5.36 [ -15.60,   +1.83] [ -18.83,   +2.84]   absolute: Chai  +3.18  TF -11.50  Cart  -6.14
+  shrink       Chai - Cart    +2.08 [  -0.11,   +4.23] [  -0.73,   +4.79]   absolute: Chai  +8.34  TF  +7.26  Cart  +6.26
+  shrink       Chai - TF      +1.09 [  -1.04,   +3.10] [  -1.65,   +3.60]   absolute: Chai  +8.34  TF  +7.26  Cart  +6.26
+  shrink       TF - Cart      +0.99 [  +0.43,   +1.59] [  +0.29,   +1.75]   absolute: Chai  +8.34  TF  +7.26  Cart  +6.26
+
+READING: LEAD SURVIVES THE MATCHED CONTROL
