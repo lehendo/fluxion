@@ -33,11 +33,10 @@ The pinned versions we verified together are Python 3.10, torch 2.6, chai-lab 0.
 
 ## Reproducing the paper
 
-`paper_results/` holds the saved outputs behind every figure, table and number in the paper (JSON, CSV and text summaries; no coordinates and no latents). `MANIFEST.md` lists the configs and seeds of every training run and the script that produces each saved result.
+`MANIFEST.md` lists the configs and seeds of every training run and the script behind each result in the paper.
 
 **Without a GPU or any data**
 ```bash
-python scripts/make_figures.py        # figures, text reports and paper_results/tables.md from paper_results/
 python examples/synthetic_hazards.py  # the three hazards in miniature, on synthetic latents (seconds)
 pytest                                # test suite
 ```
@@ -49,9 +48,9 @@ pytest                                # test suite
 3. `python scripts/build_extraction_metadata.py --from-latents $FLUXION_DATA/latents` and `python -m fluxion.data_pipeline.compute_norm_stats --latents-dir $FLUXION_DATA/latents`.
 4. Run the analysis scripts named in `MANIFEST.md`. Each has a one-line docstring naming the paper artifact it produces. We checked this chain on the cluster: a fresh install rebuilt one protein's row cache bit-identically from the shards and reproduced the saved headline (604 numbers to 1e-5) and the saved 10 ps probe fit.
 
-**Training** (GPU). `fluxion.training.train_t3` trains the 9M-parameter arms (about 3.5 h each on one H100 slice) and `scripts/phase3_eval.py` evaluates them. `fluxion.training.train` is the DDP trainer of the original 40M run (four A100s for about 71 hours). `examples/slurm_template.sbatch` and `guides/slurm_preemption.md` show how it checkpoints on preemption.
+**Training** (GPU). `fluxion.training.train_t3` trains the 9M-parameter arms (about 3.5 h each on one H100 slice) and `scripts/phase3_eval.py` evaluates them. `fluxion.training.train` is the DDP trainer of the original 40M run (four A100s for about 71 hours). `examples/slurm_template.sbatch` shows how it checkpoints on preemption.
 
-**What will not reproduce bit for bit.** Re-extraction adds fresh per-frame noise, the padded values depend on the GPU type, and kernels are non-deterministic, so a seed fixes data order and initialization but not the bits of a latent or a checkpoint. Expect agreement within the extraction noise the paper measures (Section 3.2). `paper_results/` is what the paper reports.
+**What will not reproduce bit for bit.** Re-extraction adds fresh per-frame noise, the padded values depend on the GPU type, and kernels are non-deterministic, so a seed fixes data order and initialization but not the bits of a latent or a checkpoint. Expect agreement within the extraction noise the paper measures (Section 3.2).
 
 ## What is here
 
@@ -63,9 +62,8 @@ pytest                                # test suite
 | `src/fluxion/inference/` | rollout and decoding of generated latents (not used for the paper's results) |
 | `src/fluxion/analysis/` | masks, probes, statistics, the identity-flow theory, noise recomposition, template features |
 | `scripts/` | one script per paper figure, table or number |
-| `guides/` | short notes on the infrastructure and the failure each piece fixes |
 | `examples/` | a synthetic-data walkthrough and a Slurm template |
-| `paper_results/`, `MANIFEST.md`, `manifest.json` | saved results and the map from each to its script, config and seed |
+| `MANIFEST.md`, `manifest.json` | the map from each result to its script, config and seed |
 
 ## Limitations and what we do not claim
 
