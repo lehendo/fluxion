@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Fetches the ATLAS 10 ps trajectories used for the coordinate comparison (paper Section 4.2, Appendix A.5)."""
+from __future__ import annotations
+from fluxion.paths import ATLAS_10PS
+
+import argparse
+import hashlib
+import json
+import re
+import time
+import zipfile
+from pathlib import Path
+
+import requests
+
+BASE = "https://www.dsimb.inserm.fr/ATLAS/api/ATLAS/protein"
+UA = {"User-Agent": "Mozilla/5.0"}
+PILOT = ("16pk_A,1a62_A,1ab1_A,1af7_A,1ah7_A,1ail_A,1aol_A,1b0n_A,1b25_D,1b2s_E,1b2s_F,1b8d_K,1bgf_A,1bkp_A,1bq8_A,1btk_A,1bx7_A,1bxy_A,1bxy_B").split(",")
+
+
+def total_size(url: str, session: requests.Session, timeout: float = 120) -> tuple[int, dict]:
+    r = session.get(url, headers={**UA, "Range": "bytes=0-0"}, timeout=timeout)
+    if r.status_code != 206:
+        raise RuntimeError(f"{url}: expected 206 Partial Content, got {r.status_code} (range requests unsupported?)")
+    m = re.match(r"bytes 0-0/(\d+)$", r.headers.get("Content-Range", ""))
+    if not m:
+        raise RuntimeError(f"{url}: unreadable Content-Range {r.headers.get('Content-Range')!r}")
+    return int(m.group(1)), {k: v for k, v in r.headers.items() if k.lower() in ("last-modified", "date", "content-disposition", "etag", "server")}
+
+
+def download(url: str, dest: Path, chunk: int = 32 * 2**20, retries: int = 8, session: requests.Session | None = None, timeout: float = 300) -> dict:
+    """Download `url` to `dest` in ranged chunks, resuming from dest.part. Returns metadata. Raises on size mismatch."""
+    session = session or requests.Session()
+    total, hdrs = total_size(url, session)
+    part = dest.with_name(dest.name + ".part")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    have = part.stat().st_size if part.exists() else 0
+    if have > total:                                    # a stale/longer partial file cannot be a prefix of this resource
+        part.unlink(); have = 0
+    t0 = time.time()
+    with open(part, "ab") as f:
+        while have < total:
+            end = min(have + chunk, total) - 1
+            for attempt in range(retries):
+                try:
+                    r = session.get(url, headers={**UA, "Range": f"bytes={have}-{end}"}, timeout=timeout)
+                    if r.status_code != 206 or len(r.content) != end - have + 1:
+                        raise RuntimeError(f"bad chunk: status {r.status_code}, {len(r.content)} bytes for range {have}-{end}")
+                    f.write(r.content); f.flush()
+                    have = end + 1
+                    break
+                except Exception as e:                  # network error or short read: back off and retry the SAME range
+                    if attempt == retries - 1:
+                        raise
+                    time.sleep(min(60, 2 ** attempt))
+    if part.stat().st_size != total:
+        raise RuntimeError(f"{dest.name}: downloaded {part.stat().st_size} bytes, advertised {total}")
+    part.rename(dest)
+    return {"bytes": total, "seconds": round(time.time() - t0, 1), "headers": hdrs}
+
+
+def verify_and_extract(zip_path: Path, out_dir: Path) -> dict:
+    """CRC-check every member, then extract into a NEW directory. Raises on corruption."""
+    with zipfile.ZipFile(zip_path) as z:
+        bad = z.testzip()
+        if bad is not None:
+            raise RuntimeError(f"{zip_path.name}: corrupt member {bad}")
+        names = z.namelist()
+        out_dir.mkdir(parents=True, exist_ok=False)
+        z.extractall(out_dir)
+    return {"members": names}
+
+
+def shard_proteins(sizes: dict[str, int], index: int, n: int) -> list[str]:
+    """Deterministic size-balanced split of proteins into n shards (greedy, largest first); returns shard `index`."""
+    bins: list[list[str]] = [[] for _ in range(n)]
+    load = [0] * n
+    for p in sorted(sizes, key=lambda k: (-sizes[k], k)):
+        j = min(range(n), key=lambda b: (load[b], b))
+        bins[j].append(p); load[j] += sizes[p]
+    return sorted(bins[index])
+
+
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--out-dir", type=Path, default=ATLAS_10PS)
+    ap.add_argument("--proteins", nargs="+", default=PILOT)
+    ap.add_argument("--base", default=BASE)
+    ap.add_argument("--chunk-mb", type=int, default=32)
+    ap.add_argument("--shard", type=int, nargs=2, metavar=("INDEX", "N"), default=None, help="download only shard INDEX of N size-balanced shards (run N tasks in parallel: the server limits each connection)")
+    a = ap.parse_args()
+    a.out_dir.mkdir(parents=True, exist_ok=True)
+    (a.out_dir / "meta").mkdir(exist_ok=True)
+    s = requests.Session()
+    proteins = a.proteins
+    if a.shard:
+        proteins = shard_proteins({p: total_size(f"{a.base}/{p}", s)[0] for p in a.proteins}, a.shard[0], a.shard[1])
+        print(f"[fetch] shard {a.shard[0]}/{a.shard[1]}: {proteins}", flush=True)
+    for p in proteins:
+        d = a.out_dir / p
+        if (d / ".complete").exists():
+            print(f"[fetch] {p}: already complete", flush=True); continue
+        info = download(f"{a.base}/{p}", a.out_dir / f"{p}_protein.zip", chunk=a.chunk_mb * 2**20, session=s)
+        zp = a.out_dir / f"{p}_protein.zip"
+        info["sha256"] = sha256(zp)
+        if d.exists():                                  # an interrupted extraction: start the directory over
+            import shutil; shutil.rmtree(d)
+        info.update(verify_and_extract(zp, d))
+        (d / ".complete").write_text("ok")
+        (a.out_dir / "meta" / f"{p}.json").write_text(json.dumps(info, indent=1))       # one file per protein: parallel tasks never share a file
+        print(f"[fetch] {p}: {info['bytes'] / 1e6:.0f} MB in {info['seconds']} s, members {info['members']}", flush=True)
+    print("[fetch] all done", flush=True)
+
+
+if __name__ == "__main__":
+    main()

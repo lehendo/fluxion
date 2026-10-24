@@ -1,0 +1,26 @@
+# build and environment artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.DS_Store
+.venv/
+build/
+dist/
+
+# kept local, not published
+guides/
+paper_results/
+
+# data, checkpoints and job output are never versioned
+data/
+logs/
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.hdf5
+*.dcd
+*.xtc
+*.zip
