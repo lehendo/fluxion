@@ -28,5 +28,5 @@ The data are governed by ATLAS's own terms of use, which are stated on the ATLAS
 runs this pipeline on ATLAS, and anyone who redistributes latents extracted from ATLAS trajectories, should read those terms first and
 comply with them, including the citation above.
 
-The saved result summaries in paper_results/ are numerical summaries computed from ATLAS-derived latents; they contain no
+The result summaries the analysis scripts write are numerical summaries computed from ATLAS-derived latents; they contain no
 coordinates and no latents.

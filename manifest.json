@@ -408,7 +408,7 @@
   },
   {
    "script": "scripts/make_figures.py",
-   "artifact": "Regenerates every paper figure and report from the saved results in paper_results/ (no GPU or cluster data needed).",
+   "artifact": "Regenerates every paper figure and report from the results the analysis scripts write to paper_results/ (see MANIFEST.md; no GPU needed once they exist).",
    "seeds": [],
    "files_named": [
     "paper_results/phase1/b1/b1_report.json",
@@ -431,7 +431,7 @@
   },
   {
    "script": "scripts/make_tables.py",
-   "artifact": "Regenerates the paper's tables from the saved results into paper_results/tables.md: the headline decomposition (Section 4.1), the baseline ratios (3.3), the padding/centering arms (7.1), and the per-protein noise, robustness and curve tables (Appendices A.1, A.3, A.7).",
+   "artifact": "Regenerates the paper's tables from the results in paper_results/ into paper_results/tables.md: the headline decomposition (Section 4.1), the baseline ratios (3.3), the padding/centering arms (7.1), and the per-protein noise, robustness and curve tables (Appendices A.1, A.3, A.7).",
    "seeds": [],
    "files_named": [
     "eval_100.json",

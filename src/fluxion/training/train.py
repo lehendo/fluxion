@@ -3,10 +3,10 @@
 DDP training loop for the temporal formulation: conditional flow matching from frame i to frame i+1 (z0 = frame i, z1 = frame i+1), with EMA, gate-learning-rate optimizer groups
 and SIGUSR1 checkpointing. It is the formulation of the original run reported in the paper (Section 7.1), which recovered nothing; the controlled arms use training/train_t3.py.
 
-Launch with torchrun (see examples/slurm_template.sbatch and guides/ddp_four_gpu.md):
+Launch with torchrun (see examples/slurm_template.sbatch):
     torchrun --nproc_per_node=NUM_GPUS -m fluxion.training.train --scratch-dir $FLUXION_DATA --proteins 16pk_A,1a62_A
 
-SLURM preemption: send SIGUSR1 to every rank; the loop checkpoints cleanly before the wall-time kill arrives (guides/slurm_preemption.md).
+SLURM preemption: send SIGUSR1 to every rank; the loop checkpoints cleanly before the wall-time kill arrives (see examples/slurm_template.sbatch).
 """
 
 import os

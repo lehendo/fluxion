@@ -1,6 +1,6 @@
 #!/bin/bash
 # Template for a multi-GPU training job that checkpoints when it is preempted or reaches its wall limit.
-# Replace every <placeholder>. Explanations of each line are in guides/slurm_preemption.md and guides/ddp_four_gpu.md.
+# Replace every <placeholder>.
 #SBATCH --job-name=fluxion_train
 #SBATCH --account=<account>
 #SBATCH --partition=<partition>

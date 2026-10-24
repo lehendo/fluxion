@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates every paper figure and report from the saved results in paper_results/ (no GPU or cluster data needed)."""
+"""Regenerates every paper figure and report from the results the analysis scripts write to paper_results/ (see MANIFEST.md; no GPU needed once they exist)."""
 from __future__ import annotations
 
 import runpy

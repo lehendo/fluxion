@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates the paper's tables from the saved results into paper_results/tables.md: the headline decomposition (Section 4.1), the baseline ratios (3.3), the padding/centering arms (7.1), and the per-protein noise, robustness and curve tables (Appendices A.1, A.3, A.7)."""
+"""Regenerates the paper's tables from the results in paper_results/ into paper_results/tables.md: the headline decomposition (Section 4.1), the baseline ratios (3.3), the padding/centering arms (7.1), and the per-protein noise, robustness and curve tables (Appendices A.1, A.3, A.7)."""
 from __future__ import annotations
 
 import json

@@ -5,7 +5,7 @@ FLUXION_ATLAS_10PS    ATLAS trajectories saved every 10 ps, one directory per pr
 FLUXION_ATLAS_RAW     ATLAS 100 ps trajectories (default $FLUXION_DATA/atlas_raw)
 FLUXION_ATLAS_ANALYSIS  ATLAS "analysis" archives (default $FLUXION_DATA/atlas_analysis)
 FLUXION_LOGS          job logs read by build_extraction_metadata.py (default ./logs)
-FLUXION_PAPER_RESULTS the saved result summaries behind the paper (default ./paper_results)
+FLUXION_PAPER_RESULTS where the analysis scripts write their result summaries (default ./paper_results)
 """
 from __future__ import annotations
 

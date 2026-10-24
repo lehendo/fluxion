@@ -1,4 +1,4 @@
-"""The manifest covers every script and every saved result."""
+"""The manifest covers every script and every result."""
 import json
 import subprocess
 import sys
