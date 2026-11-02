@@ -657,9 +657,7 @@
   {
    "script": "scripts/phase1b_stability_null.py",
    "artifact": "Chance-corrected stability statistics against random-subspace nulls (paper Appendix A.5).",
-   "seeds": [
-    "0"
-   ],
+   "seeds": [],
    "files_named": []
   },
   {

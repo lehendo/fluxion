@@ -65,7 +65,7 @@ Shared by the 9M-parameter runs: FluxionDiT, d_model 256, 6 layers, 8 heads, d_f
 | `scripts/phase1b_report.py` | Report of the 100 ps and longer coordinate comparison (paper Appendix A.5). | none |
 | `scripts/phase1b_report_10ps.py` | Report of the 10 ps coordinate comparison (paper Appendix A.5). | none |
 | `scripts/phase1b_stability_10ps.py` | PCA-axis stability diagnostics across replicas (paper Appendix A.5). | none |
-| `scripts/phase1b_stability_null.py` | Chance-corrected stability statistics against random-subspace nulls (paper Appendix A.5). | 0 |
+| `scripts/phase1b_stability_null.py` | Chance-corrected stability statistics against random-subspace nulls (paper Appendix A.5). | none |
 | `scripts/phase1b_stability_report.py` | Registered reading of the stability diagnostics (paper Appendix A.5). | none |
 | `scripts/phase1b_templatefeat_10ps.py` | Template-feature PCA control for the 10 ps comparison (paper Appendix A.5). | none |
 | `scripts/phase1b_tf_report.py` | Report of the template-feature control (paper Appendix A.5). | none |

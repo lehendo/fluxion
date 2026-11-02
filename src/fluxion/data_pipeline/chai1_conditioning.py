@@ -44,7 +44,7 @@ This module has two responsibilities:
 Chai-1 imports are deferred to inside function bodies (not at module level)
 so this module can still be imported where chai_lab isn't installed --
 matching the lazy-import convention used for MDAnalysis elsewhere in this
-project (see inference/visualize.py).
+project.
 """
 
 from __future__ import annotations

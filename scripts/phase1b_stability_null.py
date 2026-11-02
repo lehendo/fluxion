@@ -30,18 +30,6 @@ def capture_null(m: int, D: int, spectrum) -> float:
     return min(1.0, (m / D) / f)
 
 
-def simulate_checks() -> None:
-    rng = np.random.default_rng(0)
-    print("simulation check of the analytic nulls (random subspaces / unit vectors):")
-    for D, m in ((138, 100), (700, 100), (20000, 100), (150000, 100)):
-        s = []
-        for _ in range(3):
-            A = np.linalg.qr(rng.standard_normal((D, m)))[0]; B = np.linalg.qr(rng.standard_normal((D, m)))[0]
-            s.append(np.mean(np.linalg.svd(A.T @ B, compute_uv=False) ** 2))
-        v = rng.standard_normal((200, D)); v /= np.linalg.norm(v, axis=1, keepdims=True); w = rng.standard_normal((200, D)); w /= np.linalg.norm(w, axis=1, keepdims=True)
-        print(f"  D = {D:6d}, m = {m}: S_m simulated {np.mean(s):.4f} vs m/D {null_overlap(m, D):.4f};  E|cos| simulated {np.abs((v * w).sum(1)).mean():.4f} vs analytic {null_axis_cos(D):.4f}")
-
-
 def per_protein(r, ctrl, space):
     D = (384 if space == "chai" else 3) * r["n_res"]; s = r["spaces"][space]; spec = np.array(ctrl["spectrum"][space])
     out = {"D": D}
@@ -69,7 +57,6 @@ def verdict(d_s, ci_s, d_c, ci_c, cart_k_median, frac_cart_null_over_half) -> st
 
 
 def main() -> None:
-    simulate_checks()
     S = {Path(f).stem: json.load(open(f)) for f in sorted(glob.glob(str(STAB / "*.json")))}
     C = {Path(f).stem: json.load(open(f)) for f in sorted(glob.glob(str(CTRL / "*.json")))}
     passL = [Path(f).stem for f in sorted(glob.glob(str(LA / "*.json"))) if next(iter(json.load(open(f))["per_protein"].values()))["pass"]]

@@ -58,7 +58,7 @@ pytest
 | `src/fluxion/data_pipeline/` | ATLAS fetching, per-frame Chai-1 conditioning, latent extraction, dataset and normalization |
 | `src/fluxion/model/` | the diffusion transformer |
 | `src/fluxion/training/` | flow-matching loss, trainers, checkpointing |
-| `src/fluxion/inference/` | rollout and decoding of generated latents (not used for the paper's results) |
+| `src/fluxion/inference/` | rollout of generated latents (not used for the paper's results) |
 | `src/fluxion/analysis/` | masks, probes, statistics, the identity-flow theory, noise recomposition, template features |
 | `scripts/` | one script per paper figure, table or number |
 | `examples/` | a Slurm template for the multi-GPU trainer |
