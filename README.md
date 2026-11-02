@@ -35,10 +35,9 @@ The pinned versions we verified together are Python 3.10, torch 2.6, chai-lab 0.
 
 `MANIFEST.md` lists the configs and seeds of every training run and the script behind each result in the paper.
 
-**Without a GPU or any data**
+**Test suite (CPU, no data)**
 ```bash
-python examples/synthetic_hazards.py  # the three hazards in miniature, on synthetic latents (seconds)
-pytest                                # test suite
+pytest
 ```
 
 **From extracted latents (CPU).** Latents are not distributed: they derive from ATLAS trajectories, whose terms of use apply (see `NOTICE`), so you extract them yourself. Set `FLUXION_DATA` (and optionally `FLUXION_ATLAS_10PS`; see `src/fluxion/paths.py`), then:
@@ -62,7 +61,7 @@ pytest                                # test suite
 | `src/fluxion/inference/` | rollout and decoding of generated latents (not used for the paper's results) |
 | `src/fluxion/analysis/` | masks, probes, statistics, the identity-flow theory, noise recomposition, template features |
 | `scripts/` | one script per paper figure, table or number |
-| `examples/` | a synthetic-data walkthrough and a Slurm template |
+| `examples/` | a Slurm template for the multi-GPU trainer |
 | `MANIFEST.md`, `manifest.json` | the map from each result to its script, config and seed |
 
 ## Limitations and what we do not claim
